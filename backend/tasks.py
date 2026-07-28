@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Literal, Optional
 
 from supabase_client import get_supabase_client
 
@@ -55,7 +55,7 @@ def list_team_tasks(team_id: str) -> list[dict]:
 def mark_stage_completed(
     team_id: str,
     stage_id: str,
-    completed_by_admin_id: str,
+    completed_by_admin_id: Optional[str],
     completion_method: CompletionMethod,
 ) -> None:
     """Отметить этап выполненным для команды и разблокировать то, что теперь доступно."""

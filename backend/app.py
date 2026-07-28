@@ -7,6 +7,7 @@ from datetime import timedelta
 from flask import Flask, jsonify, request, session
 from flask.typing import ResponseReturnValue
 
+from answers import AnswerError, get_stage_fields, submit_field_answer
 from auth import AuthError, login_admin, login_team, register_team
 from config import load_config
 from supabase_client import get_supabase_client
@@ -165,6 +166,35 @@ def create_app() -> Flask:
             return jsonify(status="error", detail=str(exc)), 400
 
         return jsonify(status="ok")
+
+    @app.get("/tasks/<stage_id>/fields")
+    def get_task_fields(stage_id: str) -> ResponseReturnValue:
+        if session.get("identity") != "team":
+            return jsonify(status="error", detail="Требуется вход как команда"), 401
+
+        try:
+            fields = get_stage_fields(session["team_id"], stage_id)
+        except AnswerError as exc:
+            return jsonify(status="error", detail=str(exc)), 400
+
+        return jsonify(status="ok", fields=fields)
+
+    @app.post("/tasks/<stage_id>/fields/<field_id>/submit")
+    def submit_task_field(stage_id: str, field_id: str) -> ResponseReturnValue:
+        if session.get("identity") != "team":
+            return jsonify(status="error", detail="Требуется вход как команда"), 401
+
+        data = request.get_json(silent=True) or {}
+        value = str(data.get("value", ""))
+        if not value.strip():
+            return jsonify(status="error", detail="Пустой ответ"), 400
+
+        try:
+            result = submit_field_answer(session["team_id"], stage_id, field_id, value)
+        except AnswerError as exc:
+            return jsonify(status="error", detail=str(exc)), 400
+
+        return jsonify(status="ok", **result)
 
     return app
 
