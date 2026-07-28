@@ -1,0 +1,55 @@
+# Игровой контент: граф этапов + поля ответа.
+#
+# Формат:
+#   slug              — уникальный человекочитаемый id этапа (не менять после публикации,
+#                        на нём завязаны ссылки requires у других этапов)
+#   title, description — текст, который видит команда
+#   completion_type   — actor | answer | checkbox | manual_review
+#   requires          — список slug этапов-предпосылок (граф — только AND:
+#                        этап открывается, когда пройдены ВСЕ перечисленные)
+#   fields            — только для completion_type: answer. order_sensitive: true
+#                        означает, что accepted относится именно к этому полю;
+#                        чтобы сделать order-insensitive группу полей, укажите
+#                        ОДИН И ТОТ ЖЕ список accepted у каждого поля группы
+#                        и order_sensitive: false
+#
+# Этот файл — пример/заготовка. Запуск загрузки:
+#   cd backend && python import_content.py
+# (по умолчанию читает ../data/quest_content.yaml)
+
+stages:
+  - slug: intro
+    title: "Знакомство"
+    description: "Первое задание квеста."
+    completion_type: actor
+
+  - slug: find_place_and_time
+    title: "Найдите место и время"
+    description: "Разгадайте, где и когда это произошло."
+    completion_type: answer
+    requires: [intro]
+    fields:
+      - key: place
+        label: "Место"
+        hint: "где это было"
+        order: 1
+        order_sensitive: true
+        accepted: ["дом"]
+      - key: time
+        label: "Время"
+        hint: "во сколько"
+        order: 2
+        order_sensitive: true
+        accepted: ["полночь"]
+
+  - slug: confirm_ready
+    title: "Готовы продолжить?"
+    description: "Нажмите, когда будете готовы идти дальше."
+    completion_type: checkbox
+    requires: [find_place_and_time]
+
+  - slug: send_evidence_photo
+    title: "Пришлите фото доказательства"
+    description: "Сфотографируйте то, что нашли, и отправьте на проверку."
+    completion_type: manual_review
+    requires: [confirm_ready]
