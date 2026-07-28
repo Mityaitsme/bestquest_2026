@@ -10,6 +10,7 @@ from flask.typing import ResponseReturnValue
 from auth import AuthError, login_admin, login_team, register_team
 from config import load_config
 from supabase_client import get_supabase_client
+from tasks import TaskError, list_team_tasks, mark_stage_completed, seed_team_progress
 
 SESSION_LIFETIME_DAYS = 30
 
@@ -49,6 +50,7 @@ def create_app() -> Flask:
 
         try:
             team_session = register_team(name, password)
+            seed_team_progress(team_session.team_id)
         except AuthError as exc:
             return jsonify(status="error", detail=str(exc)), 400
 
@@ -133,6 +135,35 @@ def create_app() -> Flask:
     @app.post("/auth/logout")
     def logout() -> ResponseReturnValue:
         session.clear()
+        return jsonify(status="ok")
+
+    @app.get("/tasks")
+    def get_tasks() -> ResponseReturnValue:
+        if session.get("identity") != "team":
+            return jsonify(status="error", detail="Требуется вход как команда"), 401
+        return jsonify(status="ok", tasks=list_team_tasks(session["team_id"]))
+
+    @app.get("/admin/teams/<team_id>/tasks")
+    def admin_get_team_tasks(team_id: str) -> ResponseReturnValue:
+        if session.get("identity") != "admin":
+            return jsonify(status="error", detail="Требуется вход как админ"), 401
+        return jsonify(status="ok", tasks=list_team_tasks(team_id))
+
+    @app.post("/admin/teams/<team_id>/stages/<stage_id>/complete")
+    def admin_complete_stage(team_id: str, stage_id: str) -> ResponseReturnValue:
+        if session.get("identity") != "admin":
+            return jsonify(status="error", detail="Требуется вход как админ"), 401
+
+        try:
+            mark_stage_completed(
+                team_id=team_id,
+                stage_id=stage_id,
+                completed_by_admin_id=session["admin_id"],
+                completion_method="actor",
+            )
+        except TaskError as exc:
+            return jsonify(status="error", detail=str(exc)), 400
+
         return jsonify(status="ok")
 
     return app
