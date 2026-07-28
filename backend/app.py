@@ -11,7 +11,13 @@ from answers import AnswerError, get_stage_fields, submit_field_answer
 from auth import AuthError, login_admin, login_team, register_team
 from config import load_config
 from supabase_client import get_supabase_client
-from tasks import TaskError, list_team_tasks, mark_stage_completed, seed_team_progress
+from tasks import (
+    TaskError,
+    complete_checkbox_stage,
+    list_team_tasks,
+    mark_stage_completed,
+    seed_team_progress,
+)
 
 SESSION_LIFETIME_DAYS = 30
 
@@ -195,6 +201,18 @@ def create_app() -> Flask:
             return jsonify(status="error", detail=str(exc)), 400
 
         return jsonify(status="ok", **result)
+
+    @app.post("/tasks/<stage_id>/checkbox-complete")
+    def checkbox_complete_task(stage_id: str) -> ResponseReturnValue:
+        if session.get("identity") != "team":
+            return jsonify(status="error", detail="Требуется вход как команда"), 401
+
+        try:
+            complete_checkbox_stage(session["team_id"], stage_id)
+        except TaskError as exc:
+            return jsonify(status="error", detail=str(exc)), 400
+
+        return jsonify(status="ok")
 
     return app
 

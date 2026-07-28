@@ -44,7 +44,10 @@ def list_team_tasks(team_id: str) -> list[dict]:
     client = get_supabase_client()
     result = (
         client.table("team_stage_progress")
-        .select("stage_id, status, completed_at, completion_method, stages(slug, title, description)")
+        .select(
+            "stage_id, status, completed_at, completion_method, "
+            "stages(slug, title, description, completion_type)"
+        )
         .eq("team_id", team_id)
         .in_("status", VISIBLE_STATUSES)
         .execute()
@@ -85,6 +88,24 @@ def mark_stage_completed(
     ).eq("team_id", team_id).eq("stage_id", stage_id).execute()
 
     _unlock_dependents(team_id, stage_id)
+
+
+def complete_checkbox_stage(team_id: str, stage_id: str) -> None:
+    """Метод 3: команда сама подтверждает выполнение (галочка/"далее"), без текста."""
+    client = get_supabase_client()
+
+    stage = client.table("stages").select("completion_type").eq("id", stage_id).execute().data
+    if not stage:
+        raise TaskError("Такого этапа нет")
+    if stage[0]["completion_type"] != "checkbox":
+        raise TaskError("Этот этап не поддерживает самостоятельное подтверждение")
+
+    mark_stage_completed(
+        team_id=team_id,
+        stage_id=stage_id,
+        completed_by_admin_id=None,
+        completion_method="checkbox",
+    )
 
 
 def _unlock_dependents(team_id: str, stage_id: str) -> None:
