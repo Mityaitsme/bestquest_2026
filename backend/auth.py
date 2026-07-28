@@ -12,8 +12,10 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
+from supabase import create_client
 from supabase_auth.errors import AuthApiError
 
+from config import load_config
 from supabase_client import get_supabase_client
 
 AUTH_EMAIL_DOMAIN = "team.quest.local"
@@ -50,9 +52,22 @@ def _synthetic_email(entity_id: uuid.UUID) -> str:
 
 
 def _sign_in(email: str, password: str) -> Session:
-    client = get_supabase_client()
+    """Проверить пароль через Supabase Auth.
+
+    ВАЖНО: намеренно НЕ использует общий закэшированный get_supabase_client().
+    sign_in_with_password меняет авторизационный контекст клиента, на котором
+    вызван, на только что вошедшего пользователя — а get_supabase_client()
+    закэширован (@lru_cache) и переиспользуется вообще везде в backend на
+    service_role. Если бы вход по паролю "отравлял" этот общий клиент,
+    все последующие запросы в этом же процессе (у ЛЮБОЙ другой команды или
+    админа) внезапно начали бы выполняться в контексте RLS только что
+    вошедшего пользователя, а не service_role. Поэтому здесь создаётся
+    отдельный одноразовый клиент, который больше нигде не переиспользуется.
+    """
+    config = load_config()
+    verification_client = create_client(config.supabase_url, config.supabase_service_key)
     try:
-        result = client.auth.sign_in_with_password(
+        result = verification_client.auth.sign_in_with_password(
             {"email": email, "password": password}
         )
     except AuthApiError as exc:
