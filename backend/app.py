@@ -10,6 +10,14 @@ from flask.typing import ResponseReturnValue
 from answers import AnswerError, get_stage_fields, submit_field_answer
 from auth import AuthError, login_admin, login_team, register_team
 from config import load_config
+from reviews import (
+    ReviewError,
+    get_photo_signed_url,
+    list_pending_reviews,
+    review_decision,
+    submit_manual_review,
+    upload_review_photo,
+)
 from supabase_client import get_supabase_client
 from tasks import (
     TaskError,
@@ -20,6 +28,7 @@ from tasks import (
 )
 
 SESSION_LIFETIME_DAYS = 30
+MAX_UPLOAD_CONTENT_LENGTH = 9 * 1024 * 1024
 
 
 def create_app() -> Flask:
@@ -28,7 +37,13 @@ def create_app() -> Flask:
 
     app = Flask(__name__)
     app.config["SECRET_KEY"] = config.secret_key
+    app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_CONTENT_LENGTH
     app.permanent_session_lifetime = timedelta(days=SESSION_LIFETIME_DAYS)
+
+    def require_operator() -> ResponseReturnValue | None:
+        if session.get("identity") != "admin" or session.get("role") != "operator":
+            return jsonify(status="error", detail="Требуется вход как оператор"), 403
+        return None
 
     @app.get("/health")
     def health() -> ResponseReturnValue:
@@ -210,6 +225,67 @@ def create_app() -> Flask:
         try:
             complete_checkbox_stage(session["team_id"], stage_id)
         except TaskError as exc:
+            return jsonify(status="error", detail=str(exc)), 400
+
+        return jsonify(status="ok")
+
+    @app.post("/tasks/<stage_id>/manual-review")
+    def submit_task_manual_review(stage_id: str) -> ResponseReturnValue:
+        if session.get("identity") != "team":
+            return jsonify(status="error", detail="Требуется вход как команда"), 401
+
+        text = request.form.get("text", "").strip()
+        photo_path = None
+        photo_file = request.files.get("photo")
+        if photo_file and photo_file.filename:
+            try:
+                photo_path = upload_review_photo(photo_file.read(), photo_file.mimetype)
+            except ReviewError as exc:
+                return jsonify(status="error", detail=str(exc)), 400
+
+        if not text and not photo_path:
+            return jsonify(status="error", detail="Нужен текст ответа или фото"), 400
+
+        try:
+            review_id = submit_manual_review(session["team_id"], stage_id, text, photo_path)
+        except ReviewError as exc:
+            return jsonify(status="error", detail=str(exc)), 400
+
+        return jsonify(status="ok", review_id=review_id)
+
+    @app.get("/admin/reviews")
+    def admin_list_reviews() -> ResponseReturnValue:
+        denied = require_operator()
+        if denied:
+            return denied
+        return jsonify(status="ok", reviews=list_pending_reviews())
+
+    @app.get("/admin/reviews/<review_id>/photo-url")
+    def admin_review_photo_url(review_id: str) -> ResponseReturnValue:
+        denied = require_operator()
+        if denied:
+            return denied
+
+        try:
+            url = get_photo_signed_url(review_id)
+        except ReviewError as exc:
+            return jsonify(status="error", detail=str(exc)), 400
+
+        return jsonify(status="ok", url=url)
+
+    @app.post("/admin/reviews/<review_id>/decision")
+    def admin_review_decision(review_id: str) -> ResponseReturnValue:
+        denied = require_operator()
+        if denied:
+            return denied
+
+        data = request.get_json(silent=True) or {}
+        accept = bool(data.get("accept"))
+        comment = data.get("comment")
+
+        try:
+            review_decision(review_id, session["admin_id"], accept, comment)
+        except ReviewError as exc:
             return jsonify(status="error", detail=str(exc)), 400
 
         return jsonify(status="ok")
