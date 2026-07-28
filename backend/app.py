@@ -9,6 +9,17 @@ from flask.typing import ResponseReturnValue
 
 from answers import AnswerError, get_stage_fields, submit_field_answer
 from auth import AuthError, login_admin, login_team, register_team
+from chat import (
+    ChatError,
+    list_messages,
+    list_messages_admin,
+    list_team_chats,
+    list_team_chats_admin,
+    seed_team_chats,
+    send_admin_message,
+    send_team_message,
+    set_chat_mode,
+)
 from config import load_config
 from reviews import (
     ReviewError,
@@ -73,6 +84,7 @@ def create_app() -> Flask:
         try:
             team_session = register_team(name, password)
             seed_team_progress(team_session.team_id)
+            seed_team_chats(team_session.team_id)
         except AuthError as exc:
             return jsonify(status="error", detail=str(exc)), 400
 
@@ -286,6 +298,89 @@ def create_app() -> Flask:
         try:
             review_decision(review_id, session["admin_id"], accept, comment)
         except ReviewError as exc:
+            return jsonify(status="error", detail=str(exc)), 400
+
+        return jsonify(status="ok")
+
+    @app.get("/chats")
+    def get_chats() -> ResponseReturnValue:
+        if session.get("identity") != "team":
+            return jsonify(status="error", detail="Требуется вход как команда"), 401
+        return jsonify(status="ok", chats=list_team_chats(session["team_id"]))
+
+    @app.get("/chats/<chat_id>/messages")
+    def get_chat_messages(chat_id: str) -> ResponseReturnValue:
+        if session.get("identity") != "team":
+            return jsonify(status="error", detail="Требуется вход как команда"), 401
+
+        try:
+            messages = list_messages(session["team_id"], chat_id)
+        except ChatError as exc:
+            return jsonify(status="error", detail=str(exc)), 400
+
+        return jsonify(status="ok", messages=messages)
+
+    @app.post("/chats/<chat_id>/messages")
+    def post_chat_message(chat_id: str) -> ResponseReturnValue:
+        if session.get("identity") != "team":
+            return jsonify(status="error", detail="Требуется вход как команда"), 401
+
+        data = request.get_json(silent=True) or {}
+        content = str(data.get("content", "")).strip()
+        if not content:
+            return jsonify(status="error", detail="Пустое сообщение"), 400
+
+        try:
+            send_team_message(session["team_id"], chat_id, content)
+        except ChatError as exc:
+            return jsonify(status="error", detail=str(exc)), 400
+
+        return jsonify(status="ok")
+
+    @app.get("/admin/teams/<team_id>/chats")
+    def admin_get_team_chats(team_id: str) -> ResponseReturnValue:
+        denied = require_operator()
+        if denied:
+            return denied
+        return jsonify(status="ok", chats=list_team_chats_admin(team_id))
+
+    @app.get("/admin/chats/<chat_id>/messages")
+    def admin_get_chat_messages(chat_id: str) -> ResponseReturnValue:
+        denied = require_operator()
+        if denied:
+            return denied
+        return jsonify(status="ok", messages=list_messages_admin(chat_id))
+
+    @app.post("/admin/chats/<chat_id>/messages")
+    def admin_post_chat_message(chat_id: str) -> ResponseReturnValue:
+        denied = require_operator()
+        if denied:
+            return denied
+
+        data = request.get_json(silent=True) or {}
+        content = str(data.get("content", "")).strip()
+        if not content:
+            return jsonify(status="error", detail="Пустое сообщение"), 400
+
+        try:
+            send_admin_message(session["admin_id"], chat_id, content)
+        except ChatError as exc:
+            return jsonify(status="error", detail=str(exc)), 400
+
+        return jsonify(status="ok")
+
+    @app.post("/admin/chats/<chat_id>/mode")
+    def admin_set_chat_mode(chat_id: str) -> ResponseReturnValue:
+        denied = require_operator()
+        if denied:
+            return denied
+
+        data = request.get_json(silent=True) or {}
+        mode = str(data.get("mode", ""))
+
+        try:
+            set_chat_mode(chat_id, mode)
+        except ChatError as exc:
             return jsonify(status="error", detail=str(exc)), 400
 
         return jsonify(status="ok")
