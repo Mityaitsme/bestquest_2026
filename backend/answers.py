@@ -24,6 +24,13 @@ def _normalize(value: str) -> str:
     return value.strip().casefold()
 
 
+def _matches(accepted_value: str, match_mode: str, normalized_submitted: str) -> bool:
+    normalized_accepted = _normalize(accepted_value)
+    if match_mode == "contains":
+        return normalized_accepted in normalized_submitted
+    return normalized_accepted == normalized_submitted
+
+
 def get_stage_fields(team_id: str, stage_id: str) -> list[dict]:
     """Поля этапа + какие из них команда уже ответила верно (без самих ответов-эталонов)."""
     client = get_supabase_client()
@@ -49,7 +56,7 @@ def get_stage_fields(team_id: str, stage_id: str) -> list[dict]:
 
     submissions = (
         client.table("team_field_submissions")
-        .select("field_id")
+        .select("field_id, submitted_value")
         .eq("team_id", team_id)
         .in_("field_id", [f["id"] for f in fields])
         .execute()
@@ -57,10 +64,11 @@ def get_stage_fields(team_id: str, stage_id: str) -> list[dict]:
         if fields
         else []
     )
-    correct_field_ids = {row["field_id"] for row in submissions}
+    submitted_by_field = {row["field_id"]: row["submitted_value"] for row in submissions}
 
     for field in fields:
-        field["correct"] = field["id"] in correct_field_ids
+        field["correct"] = field["id"] in submitted_by_field
+        field["submitted_value"] = submitted_by_field.get(field["id"])
 
     return fields
 
@@ -91,13 +99,15 @@ def submit_field_answer(team_id: str, stage_id: str, field_id: str, value: str) 
 
     accepted_values = (
         client.table("answer_field_accepted_values")
-        .select("value")
+        .select("value, match_mode")
         .eq("field_id", field_id)
         .execute()
         .data
     )
     normalized_submitted = _normalize(value)
-    is_correct = any(_normalize(row["value"]) == normalized_submitted for row in accepted_values)
+    is_correct = any(
+        _matches(row["value"], row["match_mode"], normalized_submitted) for row in accepted_values
+    )
 
     if not is_correct:
         return {"correct": False, "stage_completed": False}

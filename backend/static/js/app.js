@@ -210,7 +210,7 @@
     input.className = "answer-field__input";
     input.autocomplete = "off";
     if (field.correct) {
-      input.value = "✓ принято";
+      input.value = field.submitted_value || "";
       input.disabled = true;
     }
     inputRow.appendChild(input);
@@ -251,7 +251,7 @@
 
         if (data.correct) {
           row.classList.add("answer-field--correct");
-          input.value = "✓ принято";
+          input.value = value;
           if (data.stage_completed) {
             loadTasks();
           }

@@ -154,9 +154,10 @@ def validate_stages(stages: list[dict[str, Any]]) -> None:
         for field in fields:
             if not field.get("key") or not field.get("label"):
                 raise ContentError(f"Этап '{slug}': у поля нет key или label: {field}")
-            if not field.get("accepted"):
+            if not field.get("accepted") and not field.get("accepted_contains"):
                 raise ContentError(
-                    f"Этап '{slug}', поле '{field.get('key')}': нет принятых ответов (accepted)"
+                    f"Этап '{slug}', поле '{field.get('key')}': нет принятых ответов "
+                    "(accepted и/или accepted_contains)"
                 )
 
         for prerequisite in stage.get("requires", []):
@@ -341,9 +342,15 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
             client.table("answer_field_accepted_values").delete().eq(
                 "field_id", field_id
             ).execute()
-            client.table("answer_field_accepted_values").insert(
-                [{"field_id": field_id, "value": value} for value in field["accepted"]]
-            ).execute()
+            accepted_rows = [
+                {"field_id": field_id, "value": value, "match_mode": "exact"}
+                for value in field.get("accepted", [])
+            ] + [
+                {"field_id": field_id, "value": value, "match_mode": "contains"}
+                for value in field.get("accepted_contains", [])
+            ]
+            if accepted_rows:
+                client.table("answer_field_accepted_values").insert(accepted_rows).execute()
 
     for phone in phone_numbers:
         character_slug = phone.get("character_slug")
