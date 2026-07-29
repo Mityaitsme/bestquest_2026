@@ -80,7 +80,9 @@ def list_messages(team_id: str, chat_id: str) -> list[dict]:
     )
 
 
-def send_team_message(team_id: str, chat_id: str, content: str) -> None:
+def send_team_message(team_id: str, chat_id: str, content: str) -> dict:
+    """Возвращает {"mode": ..., "character_id": ...} — чтобы вызывающий код
+    мог решить, нужно ли после этого запускать автоответ ChatGPT (mode == 'gpt')."""
     client = get_supabase_client()
     chat = _get_own_chat(client, chat_id, team_id)
     if chat["mode"] not in TEAM_SENDABLE_MODES:
@@ -95,6 +97,8 @@ def send_team_message(team_id: str, chat_id: str, content: str) -> None:
             "message_kind": message_kind,
         }
     ).execute()
+
+    return {"mode": chat["mode"], "character_id": chat["character_id"]}
 
 
 def list_team_chats_admin(team_id: str) -> list[dict]:

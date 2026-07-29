@@ -31,6 +31,7 @@ from dialogue import (
     list_pending_approvals,
     seed_team_dialogue_state,
 )
+from gpt import GptError, generate_reply
 from reviews import (
     ReviewError,
     get_photo_signed_url,
@@ -342,11 +343,20 @@ def create_app() -> Flask:
             return jsonify(status="error", detail="Пустое сообщение"), 400
 
         try:
-            send_team_message(session["team_id"], chat_id, content)
+            sent = send_team_message(session["team_id"], chat_id, content)
         except ChatError as exc:
             return jsonify(status="error", detail=str(exc)), 400
 
-        return jsonify(status="ok")
+        if sent["mode"] != "gpt" or not sent["character_id"]:
+            return jsonify(status="ok")
+
+        try:
+            reply = generate_reply(session["team_id"], chat_id, sent["character_id"])
+            return jsonify(status="ok", gpt_reply=reply)
+        except GptError as exc:
+            # Сообщение команды уже отправлено — не роняем запрос, если
+            # ChatGPT недоступен, просто сообщаем, что автоответа не будет.
+            return jsonify(status="ok", gpt_reply=None, gpt_error=str(exc))
 
     @app.get("/admin/teams/<team_id>/chats")
     def admin_get_team_chats(team_id: str) -> ResponseReturnValue:

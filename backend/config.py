@@ -15,6 +15,8 @@ DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = "5000"
 DEFAULT_SUPABASE_URL = ""
 DEFAULT_SUPABASE_SERVICE_KEY = ""
+DEFAULT_OPENAI_API_KEY = ""
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,8 @@ class Config:
     port: int
     supabase_url: str
     supabase_service_key: str
+    openai_api_key: str
+    openai_model: str
 
 
 def load_config() -> Config:
@@ -40,4 +44,6 @@ def load_config() -> Config:
         supabase_service_key=os.environ.get(
             "SUPABASE_SERVICE_KEY", DEFAULT_SUPABASE_SERVICE_KEY
         ),
+        openai_api_key=os.environ.get("OPENAI_API_KEY", DEFAULT_OPENAI_API_KEY),
+        openai_model=os.environ.get("OPENAI_MODEL", DEFAULT_OPENAI_MODEL),
     )
