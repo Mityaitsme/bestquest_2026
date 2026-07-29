@@ -165,7 +165,95 @@
       };
     }
 
+    if (stage.completion_type === "manual_review") {
+      return { element: buildManualReviewForm(task) };
+    }
+
     return null;
+  }
+
+  function buildManualReviewForm(task) {
+    const wrap = document.createElement("div");
+    wrap.className = "task-action task-review";
+    wrap.addEventListener("click", (event) => event.stopPropagation());
+
+    const status = document.createElement("p");
+    status.className = "task-review__status";
+    wrap.appendChild(status);
+
+    const textarea = document.createElement("textarea");
+    textarea.className = "task-review__textarea";
+    textarea.rows = 3;
+    textarea.placeholder = "Опишите ваш ответ";
+    wrap.appendChild(textarea);
+
+    const fileLabel = document.createElement("label");
+    fileLabel.className = "task-review__file-label";
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/*";
+    fileInput.className = "task-review__file";
+    const fileNameSpan = document.createElement("span");
+    fileNameSpan.textContent = "Прикрепить фото";
+    fileInput.addEventListener("change", () => {
+      fileNameSpan.textContent = fileInput.files[0] ? fileInput.files[0].name : "Прикрепить фото";
+    });
+    fileLabel.appendChild(fileInput);
+    fileLabel.appendChild(fileNameSpan);
+    wrap.appendChild(fileLabel);
+
+    const submitBtn = document.createElement("button");
+    submitBtn.type = "button";
+    submitBtn.className = "btn-primary task-action__button";
+    submitBtn.textContent = "Отправить на проверку";
+    wrap.appendChild(submitBtn);
+
+    const error = document.createElement("p");
+    error.className = "form-error";
+    wrap.appendChild(error);
+
+    submitBtn.addEventListener("click", async () => {
+      const text = textarea.value.trim();
+      const file = fileInput.files[0];
+      error.textContent = "";
+      if (!text && !file) {
+        error.textContent = "Напишите ответ или прикрепите фото";
+        return;
+      }
+
+      submitBtn.disabled = true;
+      status.textContent = "";
+
+      const formData = new FormData();
+      formData.append("text", text);
+      if (file) {
+        formData.append("photo", file);
+      }
+
+      try {
+        const response = await fetch(`/tasks/${task.stage_id}/manual-review`, {
+          method: "POST",
+          body: formData,
+        });
+        const data = await response.json();
+        submitBtn.disabled = false;
+
+        if (data.status !== "ok") {
+          error.textContent = data.detail || "Не получилось отправить";
+          return;
+        }
+
+        status.textContent = "Отправлено на проверку — ждите решения оператора.";
+        textarea.value = "";
+        fileInput.value = "";
+        fileNameSpan.textContent = "Прикрепить фото";
+      } catch (err) {
+        submitBtn.disabled = false;
+        error.textContent = "Не удалось связаться с сервером";
+      }
+    });
+
+    return wrap;
   }
 
   async function loadAnswerFields(stageId, container) {
