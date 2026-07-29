@@ -32,6 +32,7 @@
 
   let allTasks = [];
   let taskView = "available";
+  let tasksRequestId = 0;
 
   function setTab(tab) {
     for (const key of Object.keys(panels)) {
@@ -95,12 +96,15 @@
 
       const action = buildActionArea(task, stage);
       if (action) {
-        description.appendChild(action);
+        description.appendChild(action.element);
       }
 
       card.addEventListener("click", () => {
         const isOpen = card.dataset.open === "true";
         card.dataset.open = isOpen ? "false" : "true";
+        if (!isOpen && action && action.onOpen) {
+          action.onOpen();
+        }
       });
 
       taskListEl.appendChild(card);
@@ -147,21 +151,156 @@
 
       wrap.appendChild(button);
       wrap.appendChild(error);
-      return wrap;
+      return { element: wrap };
+    }
+
+    if (stage.completion_type === "answer") {
+      const wrap = document.createElement("div");
+      wrap.className = "task-action task-fields";
+      wrap.dataset.loaded = "false";
+
+      return {
+        element: wrap,
+        onOpen: () => loadAnswerFields(task.stage_id, wrap),
+      };
     }
 
     return null;
   }
 
+  async function loadAnswerFields(stageId, container) {
+    if (container.dataset.loaded === "true") {
+      return;
+    }
+    container.dataset.loaded = "true";
+    container.textContent = "Загрузка…";
+
+    try {
+      const response = await fetch(`/tasks/${stageId}/fields`);
+      const data = await response.json();
+      if (data.status !== "ok") {
+        container.textContent = data.detail || "Не удалось загрузить поля";
+        return;
+      }
+
+      container.innerHTML = "";
+      const fields = [...data.fields].sort((a, b) => a.order_position - b.order_position);
+      for (const field of fields) {
+        renderAnswerField(stageId, field, container);
+      }
+    } catch (err) {
+      container.textContent = "Не удалось загрузить поля";
+    }
+  }
+
+  function renderAnswerField(stageId, field, container) {
+    const row = document.createElement("div");
+    row.className = "answer-field" + (field.correct ? " answer-field--correct" : "");
+
+    const label = document.createElement("label");
+    label.className = "answer-field__label";
+    label.textContent = field.hint ? `${field.label} (${field.hint})` : field.label;
+    row.appendChild(label);
+
+    const inputRow = document.createElement("div");
+    inputRow.className = "answer-field__row";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "answer-field__input";
+    input.autocomplete = "off";
+    if (field.correct) {
+      input.value = "✓ принято";
+      input.disabled = true;
+    }
+    inputRow.appendChild(input);
+
+    const submitBtn = document.createElement("button");
+    submitBtn.type = "button";
+    submitBtn.className = "answer-field__submit";
+    submitBtn.textContent = "✓";
+    submitBtn.disabled = field.correct;
+    inputRow.appendChild(submitBtn);
+
+    row.appendChild(inputRow);
+    container.appendChild(row);
+
+    async function submit() {
+      const value = input.value.trim();
+      if (!value) {
+        return;
+      }
+      input.disabled = true;
+      submitBtn.disabled = true;
+      row.classList.remove("answer-field--error");
+
+      try {
+        const response = await fetch(`/tasks/${stageId}/fields/${field.id}/submit`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value }),
+        });
+        const data = await response.json();
+
+        if (data.status !== "ok") {
+          row.classList.add("answer-field--error");
+          input.disabled = false;
+          submitBtn.disabled = false;
+          return;
+        }
+
+        if (data.correct) {
+          row.classList.add("answer-field--correct");
+          input.value = "✓ принято";
+          if (data.stage_completed) {
+            loadTasks();
+          }
+        } else {
+          row.classList.add("answer-field--error");
+          input.value = "";
+          input.disabled = false;
+          submitBtn.disabled = false;
+        }
+      } catch (err) {
+        row.classList.add("answer-field--error");
+        input.disabled = false;
+        submitBtn.disabled = false;
+      }
+    }
+
+    submitBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      submit();
+    });
+    input.addEventListener("click", (event) => event.stopPropagation());
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        submit();
+      }
+    });
+  }
+
   async function loadTasks() {
+    // Несколько вызовов loadTasks() могут оказаться в полёте одновременно
+    // (повторная загрузка после отправки ответа, ручное переключение и т.п.).
+    // Без этой защиты более ранний, но медленнее ответивший запрос мог бы
+    // перезаписать экран уже устаревшими данными, придя позже нового.
+    const requestId = ++tasksRequestId;
     try {
       const response = await fetch("/tasks");
       const data = await response.json();
+      if (requestId !== tasksRequestId) {
+        return;
+      }
       if (data.status === "ok") {
         allTasks = data.tasks;
         renderTasks();
       }
     } catch (err) {
+      if (requestId !== tasksRequestId) {
+        return;
+      }
       taskEmptyEl.hidden = false;
       taskEmptyEl.textContent = "Не удалось загрузить задачи";
     }
