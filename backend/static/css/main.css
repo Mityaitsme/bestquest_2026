@@ -901,6 +901,11 @@ button {
   max-width: 280px;
 }
 
+.call-view__audio audio {
+  width: 100%;
+  max-width: 280px;
+}
+
 .call-password {
   display: flex;
   flex-direction: column;

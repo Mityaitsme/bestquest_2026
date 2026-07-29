@@ -782,6 +782,25 @@
     dialerViewEl.hidden = false;
   }
 
+  function renderCallAudio(audioUrl) {
+    callAudioEl.innerHTML = "";
+    if (!audioUrl) {
+      return;
+    }
+    // Реальная аудиозапись хранится в Storage и приходит настоящей ссылкой;
+    // для фаз, для которых контент-автор ещё не записал звук, audio_url —
+    // просто произвольная строка, показываем её как текст-заглушку.
+    if (/^https?:\/\//.test(audioUrl)) {
+      const audio = document.createElement("audio");
+      audio.controls = true;
+      audio.autoplay = true;
+      audio.src = audioUrl;
+      callAudioEl.appendChild(audio);
+    } else {
+      callAudioEl.textContent = `🔊 ${audioUrl}`;
+    }
+  }
+
   function showCallResult(data) {
     dialerViewEl.hidden = true;
     callViewEl.hidden = false;
@@ -792,14 +811,14 @@
       callStatusEl.textContent = data.outcome
         ? CALL_OUTCOME_MESSAGES[data.outcome] || "Звонок сброшен."
         : "Звонок сброшен.";
-      callAudioEl.textContent = "";
+      renderCallAudio("");
       currentPhaseId = null;
       return;
     }
 
     currentPhaseId = data.phase_id;
     callStatusEl.textContent = "Воспроизводится аудио:";
-    callAudioEl.textContent = `🔊 ${data.audio_url}`;
+    renderCallAudio(data.audio_url);
 
     if (data.requires_password) {
       passwordSectionEl.hidden = false;

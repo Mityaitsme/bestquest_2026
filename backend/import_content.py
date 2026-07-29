@@ -30,6 +30,15 @@ from supabase_client import get_supabase_client
 DEFAULT_CONTENT_PATH = Path(__file__).resolve().parent.parent / "data" / "quest_content.yaml"
 VALID_COMPLETION_TYPES = ("actor", "answer", "checkbox", "manual_review")
 
+AUDIO_ASSETS_DIR = DEFAULT_CONTENT_PATH.parent / "audio"
+AUDIO_BUCKET = "call-audio"
+AUDIO_CONTENT_TYPES = {
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
+    ".m4a": "audio/mp4",
+}
+
 
 class ContentError(Exception):
     """Ошибка в содержимом YAML-файла."""
@@ -209,6 +218,24 @@ def validate_phone_numbers(phone_numbers: list[dict[str, Any]]) -> None:
             )
 
 
+def _resolve_audio_url(client, audio: str) -> str:
+    """Если рядом с YAML лежит настоящий аудиофайл (data/audio/<audio>) —
+    загрузить его в Supabase Storage и вернуть публичную ссылку. Если файла
+    нет (контент-автор ещё не записал звук для этой фазы), оставить строку
+    как есть — фронтенд в этом случае просто покажет её текстом, как и
+    раньше, до появления реального аудио."""
+    local_path = AUDIO_ASSETS_DIR / audio
+    if not local_path.is_file():
+        return audio
+
+    content_type = AUDIO_CONTENT_TYPES.get(local_path.suffix.lower(), "application/octet-stream")
+    content = local_path.read_bytes()
+    client.storage.from_(AUDIO_BUCKET).upload(
+        audio, content, {"content-type": content_type, "upsert": "true"}
+    )
+    return client.storage.from_(AUDIO_BUCKET).get_public_url(audio)
+
+
 def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
     data = load_content(path)
     characters = data.get("characters", [])
@@ -381,7 +408,7 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
                         "phone_number_id": phone_number_id,
                         "content_key": phase["key"],
                         "is_entry": phase.get("entry", False),
-                        "audio_url": phase["audio"],
+                        "audio_url": _resolve_audio_url(client, phase["audio"]),
                         "requires_password": phase.get("requires_password", False),
                         "correct_password": phase.get("password"),
                     },
