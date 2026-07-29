@@ -1,10 +1,9 @@
 """Базовый чат: персонажи, чаты команды, сообщения.
 
-Пока только режимы operator/muted реально функциональны для отправки:
-scripted (скриптованный диалог) и gpt (авто-ответ ChatGPT) — это
-отдельные, ещё не реализованные механизмы; чат можно переключить в эти
-режимы, но команда в них может только читать, пока соответствующая
-логика не появится.
+Свободный текст команда может отправлять только в режимах operator/gpt.
+В режиме scripted вместо текста используется отдельный механизм —
+см. backend/dialogue.py (узлы/варианты ответа); режим gpt пока не даёт
+автоматического ответа ChatGPT — это отдельный, ещё не реализованный шаг.
 """
 
 from __future__ import annotations
@@ -56,6 +55,16 @@ def _get_own_chat(client, chat_id: str, team_id: str) -> dict:
     if not chat:
         raise ChatError("Такого чата нет у этой команды")
     return chat[0]
+
+
+def get_character_id_for_chat(team_id: str, chat_id: str) -> str:
+    """Для маршрутов скриптованного диалога: chat_id -> character_id, с проверкой
+    что чат принадлежит команде и это действительно чат с персонажем."""
+    client = get_supabase_client()
+    chat = _get_own_chat(client, chat_id, team_id)
+    if chat["chat_type"] != "character":
+        raise ChatError("У чата техподдержки нет диалога с персонажем")
+    return chat["character_id"]
 
 
 def list_messages(team_id: str, chat_id: str) -> list[dict]:

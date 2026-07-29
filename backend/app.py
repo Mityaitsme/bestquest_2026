@@ -12,6 +12,7 @@ from auth import AuthError, login_admin, login_team, register_team
 from calls import CallError, dial_number, submit_phase_password
 from chat import (
     ChatError,
+    get_character_id_for_chat,
     list_messages,
     list_messages_admin,
     list_team_chats,
@@ -22,6 +23,14 @@ from chat import (
     set_chat_mode,
 )
 from config import load_config
+from dialogue import (
+    DialogueError,
+    choose_option,
+    decide_approval,
+    get_dialogue_state,
+    list_pending_approvals,
+    seed_team_dialogue_state,
+)
 from reviews import (
     ReviewError,
     get_photo_signed_url,
@@ -86,6 +95,7 @@ def create_app() -> Flask:
             team_session = register_team(name, password)
             seed_team_progress(team_session.team_id)
             seed_team_chats(team_session.team_id)
+            seed_team_dialogue_state(team_session.team_id)
         except AuthError as exc:
             return jsonify(status="error", detail=str(exc)), 400
 
@@ -414,6 +424,55 @@ def create_app() -> Flask:
             return jsonify(status="error", detail=str(exc)), 400
 
         return jsonify(status="ok", **result)
+
+    @app.get("/chats/<chat_id>/dialogue")
+    def get_chat_dialogue(chat_id: str) -> ResponseReturnValue:
+        if session.get("identity") != "team":
+            return jsonify(status="error", detail="Требуется вход как команда"), 401
+
+        try:
+            character_id = get_character_id_for_chat(session["team_id"], chat_id)
+            state = get_dialogue_state(session["team_id"], character_id)
+        except (ChatError, DialogueError) as exc:
+            return jsonify(status="error", detail=str(exc)), 400
+
+        return jsonify(status="ok", **state)
+
+    @app.post("/chats/<chat_id>/dialogue/options/<option_id>/choose")
+    def choose_chat_dialogue_option(chat_id: str, option_id: str) -> ResponseReturnValue:
+        if session.get("identity") != "team":
+            return jsonify(status="error", detail="Требуется вход как команда"), 401
+
+        try:
+            character_id = get_character_id_for_chat(session["team_id"], chat_id)
+            result = choose_option(session["team_id"], character_id, option_id)
+        except (ChatError, DialogueError) as exc:
+            return jsonify(status="error", detail=str(exc)), 400
+
+        return jsonify(status="ok", **result)
+
+    @app.get("/admin/dialogue/approvals")
+    def admin_list_dialogue_approvals() -> ResponseReturnValue:
+        denied = require_operator()
+        if denied:
+            return denied
+        return jsonify(status="ok", approvals=list_pending_approvals())
+
+    @app.post("/admin/dialogue/approvals/<approval_id>/decision")
+    def admin_decide_dialogue_approval(approval_id: str) -> ResponseReturnValue:
+        denied = require_operator()
+        if denied:
+            return denied
+
+        data = request.get_json(silent=True) or {}
+        approve = bool(data.get("approve"))
+
+        try:
+            decide_approval(approval_id, session["admin_id"], approve)
+        except DialogueError as exc:
+            return jsonify(status="error", detail=str(exc)), 400
+
+        return jsonify(status="ok")
 
     return app
 
