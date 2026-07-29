@@ -49,7 +49,23 @@
       </section>
 
       <section id="panel-chat" class="panel" hidden>
-        <p class="empty-state">Чат появится на одном из следующих этапов.</p>
+        <div id="chat-list-view">
+          <div id="chat-list" class="chat-list"></div>
+          <p id="chat-list-empty" class="empty-state" hidden></p>
+        </div>
+
+        <div id="chat-detail-view" class="chat-detail" hidden>
+          <div class="chat-detail__header">
+            <button type="button" id="chat-back-button" class="chat-detail__back" aria-label="Назад">&#8592;</button>
+            <span id="chat-detail-title" class="chat-detail__title"></span>
+          </div>
+          <div id="chat-messages" class="chat-messages"></div>
+          <div id="chat-input-row" class="chat-input-row" hidden>
+            <input type="text" id="chat-input" class="chat-input" placeholder="Сообщение…" autocomplete="off">
+            <button type="button" id="chat-send-button" class="chat-send-button" aria-label="Отправить">&#10148;</button>
+          </div>
+          <p id="chat-readonly-note" class="empty-state" hidden></p>
+        </div>
       </section>
 
       <section id="panel-calls" class="panel" hidden>

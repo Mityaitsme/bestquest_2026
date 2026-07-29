@@ -8,6 +8,13 @@
     manual_review: "на проверку",
   };
 
+  const CHAT_MODE_LABELS = {
+    scripted: "сценарий",
+    operator: "онлайн",
+    gpt: "онлайн",
+    muted: "тихо",
+  };
+
   const appScreen = document.getElementById("app-screen");
   const teamNameEl = document.getElementById("app-team-name");
   const logoutButton = document.getElementById("logout-button");
@@ -34,6 +41,20 @@
   let taskView = "available";
   let tasksRequestId = 0;
 
+  const chatListViewEl = document.getElementById("chat-list-view");
+  const chatDetailViewEl = document.getElementById("chat-detail-view");
+  const chatListEl = document.getElementById("chat-list");
+  const chatListEmptyEl = document.getElementById("chat-list-empty");
+  const chatBackButton = document.getElementById("chat-back-button");
+  const chatDetailTitle = document.getElementById("chat-detail-title");
+  const chatMessagesEl = document.getElementById("chat-messages");
+  const chatInputRow = document.getElementById("chat-input-row");
+  const chatInput = document.getElementById("chat-input");
+  const chatSendButton = document.getElementById("chat-send-button");
+  const chatReadonlyNote = document.getElementById("chat-readonly-note");
+
+  let currentChat = null;
+
   function setTab(tab) {
     for (const key of Object.keys(panels)) {
       panels[key].hidden = key !== tab;
@@ -44,6 +65,12 @@
   for (const [tab, button] of Object.entries(navButtons)) {
     button.addEventListener("click", () => setTab(tab));
   }
+
+  navButtons.chat.addEventListener("click", () => {
+    chatDetailViewEl.hidden = true;
+    chatListViewEl.hidden = false;
+    loadChats();
+  });
 
   function setTaskView(view) {
     taskView = view;
@@ -368,6 +395,166 @@
       }
     });
   }
+
+  async function loadChats() {
+    try {
+      const response = await fetch("/chats");
+      const data = await response.json();
+      if (data.status !== "ok") {
+        chatListEmptyEl.hidden = false;
+        chatListEmptyEl.textContent = "Не удалось загрузить чаты";
+        return;
+      }
+      renderChatList(data.chats);
+    } catch (err) {
+      chatListEmptyEl.hidden = false;
+      chatListEmptyEl.textContent = "Не удалось загрузить чаты";
+    }
+  }
+
+  function renderChatList(chats) {
+    chatListEl.innerHTML = "";
+
+    if (chats.length === 0) {
+      chatListEmptyEl.hidden = false;
+      chatListEmptyEl.textContent = "Чатов пока нет";
+      return;
+    }
+    chatListEmptyEl.hidden = true;
+
+    for (const chat of chats) {
+      const isSupport = chat.chat_type === "support";
+      const name = isSupport ? "Техподдержка" : (chat.characters ? chat.characters.name : "Персонаж");
+
+      const item = document.createElement("div");
+      item.className = "chat-list-item";
+
+      const avatar = document.createElement("div");
+      avatar.className = "chat-list-item__avatar";
+      avatar.textContent = name.charAt(0).toUpperCase();
+      item.appendChild(avatar);
+
+      const info = document.createElement("div");
+      info.className = "chat-list-item__info";
+
+      const nameEl = document.createElement("div");
+      nameEl.className = "chat-list-item__name";
+      nameEl.textContent = name;
+      info.appendChild(nameEl);
+
+      const modeEl = document.createElement("div");
+      modeEl.className = "chat-list-item__mode";
+      modeEl.textContent = CHAT_MODE_LABELS[chat.mode] || chat.mode;
+      info.appendChild(modeEl);
+
+      item.appendChild(info);
+      item.addEventListener("click", () => openChat(chat, name));
+      chatListEl.appendChild(item);
+    }
+  }
+
+  function openChat(chat, name) {
+    currentChat = chat;
+    chatDetailTitle.textContent = name;
+    chatListViewEl.hidden = true;
+    chatDetailViewEl.hidden = false;
+
+    const canSend = chat.mode === "operator" || chat.mode === "gpt";
+    chatInputRow.hidden = !canSend;
+    chatReadonlyNote.hidden = canSend;
+    if (!canSend) {
+      chatReadonlyNote.textContent =
+        chat.mode === "scripted"
+          ? "В этом чате пока доступны только варианты ответа (появятся на следующем этапе)."
+          : "Сейчас в этом чате нельзя писать.";
+    }
+
+    loadMessages();
+  }
+
+  chatBackButton.addEventListener("click", () => {
+    currentChat = null;
+    chatDetailViewEl.hidden = true;
+    chatListViewEl.hidden = false;
+    loadChats();
+  });
+
+  async function loadMessages() {
+    if (!currentChat) {
+      return;
+    }
+    const chatId = currentChat.id;
+    chatMessagesEl.textContent = "Загрузка…";
+    try {
+      const response = await fetch(`/chats/${chatId}/messages`);
+      const data = await response.json();
+      if (!currentChat || currentChat.id !== chatId) {
+        return;
+      }
+      if (data.status !== "ok") {
+        chatMessagesEl.textContent = "Не удалось загрузить сообщения";
+        return;
+      }
+      renderMessages(data.messages);
+    } catch (err) {
+      if (!currentChat || currentChat.id !== chatId) {
+        return;
+      }
+      chatMessagesEl.textContent = "Не удалось загрузить сообщения";
+    }
+  }
+
+  function renderMessages(messages) {
+    chatMessagesEl.innerHTML = "";
+    for (const message of messages) {
+      const bubble = document.createElement("div");
+      const isTeam = message.sender_type === "team";
+      bubble.className = "chat-bubble " + (isTeam ? "chat-bubble--team" : "chat-bubble--other");
+      if (message.message_kind === "support_comment") {
+        bubble.classList.add("chat-bubble--support");
+      }
+      bubble.textContent = message.content;
+      chatMessagesEl.appendChild(bubble);
+    }
+    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+  }
+
+  async function sendChatMessage() {
+    const content = chatInput.value.trim();
+    if (!content || !currentChat) {
+      return;
+    }
+    const chatId = currentChat.id;
+    chatSendButton.disabled = true;
+    chatInput.disabled = true;
+
+    try {
+      const response = await fetch(`/chats/${chatId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      const data = await response.json();
+      if (data.status === "ok") {
+        chatInput.value = "";
+        await loadMessages();
+      }
+    } catch (err) {
+      // сообщение просто не появится - можно попробовать отправить ещё раз
+    } finally {
+      chatSendButton.disabled = false;
+      chatInput.disabled = false;
+      chatInput.focus();
+    }
+  }
+
+  chatSendButton.addEventListener("click", sendChatMessage);
+  chatInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      sendChatMessage();
+    }
+  });
 
   async function loadTasks() {
     // Несколько вызовов loadTasks() могут оказаться в полёте одновременно
