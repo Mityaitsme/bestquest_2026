@@ -69,7 +69,27 @@
       </section>
 
       <section id="panel-calls" class="panel" hidden>
-        <p class="empty-state">Звонки появятся на одном из следующих этапов.</p>
+        <div id="dialer-view" class="dialer">
+          <div class="dialer-display" id="dialer-display"></div>
+          <div class="keypad" id="dialer-keypad"></div>
+          <div class="dialer-actions">
+            <button type="button" id="dialer-backspace" class="btn-secondary dialer-actions__backspace">&#9003;</button>
+            <button type="button" id="dialer-call" class="dialer-actions__call" aria-label="Позвонить">&#128222;</button>
+          </div>
+        </div>
+
+        <div id="call-view" class="call-view" hidden>
+          <p class="call-view__status" id="call-status"></p>
+          <p class="call-view__audio" id="call-audio"></p>
+
+          <div id="call-password-section" class="call-password" hidden>
+            <div class="dialer-display" id="password-display"></div>
+            <div class="keypad" id="password-keypad"></div>
+            <button type="button" id="password-submit" class="btn-primary">Ввести</button>
+          </div>
+
+          <button type="button" id="call-end" class="btn-secondary call-view__end">Сбросить</button>
+        </div>
       </section>
     </main>
 

@@ -581,6 +581,139 @@
     }
   }
 
+  const dialerViewEl = document.getElementById("dialer-view");
+  const dialerDisplayEl = document.getElementById("dialer-display");
+  const dialerKeypadEl = document.getElementById("dialer-keypad");
+  const dialerBackspaceBtn = document.getElementById("dialer-backspace");
+  const dialerCallBtn = document.getElementById("dialer-call");
+
+  const callViewEl = document.getElementById("call-view");
+  const callStatusEl = document.getElementById("call-status");
+  const callAudioEl = document.getElementById("call-audio");
+  const passwordSectionEl = document.getElementById("call-password-section");
+  const passwordDisplayEl = document.getElementById("password-display");
+  const passwordKeypadEl = document.getElementById("password-keypad");
+  const passwordSubmitBtn = document.getElementById("password-submit");
+  const callEndButton = document.getElementById("call-end");
+
+  const KEYPAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
+  const CALL_OUTCOME_MESSAGES = {
+    nonexistent: "Такого номера не существует.",
+    unavailable: "Абонент недоступен.",
+    prank: "…что-то пошло не так с этим номером.",
+  };
+
+  let dialedNumber = "";
+  let passwordDigits = "";
+  let currentPhaseId = null;
+
+  function buildKeypad(container, onPress) {
+    container.innerHTML = "";
+    for (const key of KEYPAD_KEYS) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "keypad__btn";
+      btn.textContent = key;
+      btn.addEventListener("click", () => onPress(key));
+      container.appendChild(btn);
+    }
+  }
+
+  buildKeypad(dialerKeypadEl, (key) => {
+    dialedNumber += key;
+    dialerDisplayEl.textContent = dialedNumber;
+  });
+
+  dialerBackspaceBtn.addEventListener("click", () => {
+    dialedNumber = dialedNumber.slice(0, -1);
+    dialerDisplayEl.textContent = dialedNumber;
+  });
+
+  function resetToDialer() {
+    dialedNumber = "";
+    dialerDisplayEl.textContent = "";
+    currentPhaseId = null;
+    callViewEl.hidden = true;
+    dialerViewEl.hidden = false;
+  }
+
+  function showCallResult(data) {
+    dialerViewEl.hidden = true;
+    callViewEl.hidden = false;
+    passwordSectionEl.hidden = true;
+    passwordDigits = "";
+    passwordDisplayEl.textContent = "";
+
+    if (!data.connected) {
+      callStatusEl.textContent = data.outcome
+        ? CALL_OUTCOME_MESSAGES[data.outcome] || "Звонок сброшен."
+        : "Звонок сброшен.";
+      callAudioEl.textContent = "";
+      currentPhaseId = null;
+      return;
+    }
+
+    currentPhaseId = data.phase_id;
+    callStatusEl.textContent = "Воспроизводится аудио:";
+    callAudioEl.textContent = `🔊 ${data.audio_url}`;
+
+    if (data.requires_password) {
+      passwordSectionEl.hidden = false;
+    }
+  }
+
+  dialerCallBtn.addEventListener("click", async () => {
+    if (!dialedNumber) {
+      return;
+    }
+    dialerCallBtn.disabled = true;
+    try {
+      const response = await fetch("/calls/dial", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ number: dialedNumber }),
+      });
+      const data = await response.json();
+      if (data.status === "ok") {
+        showCallResult(data);
+      }
+    } catch (err) {
+      // остаёмся на наборе номера - можно попробовать ещё раз
+    } finally {
+      dialerCallBtn.disabled = false;
+    }
+  });
+
+  buildKeypad(passwordKeypadEl, (key) => {
+    passwordDigits += key;
+    passwordDisplayEl.textContent = passwordDigits;
+  });
+
+  passwordSubmitBtn.addEventListener("click", async () => {
+    if (!currentPhaseId || !passwordDigits) {
+      return;
+    }
+    passwordSubmitBtn.disabled = true;
+    try {
+      const response = await fetch(`/calls/phases/${currentPhaseId}/password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: passwordDigits }),
+      });
+      const data = await response.json();
+      if (data.status === "ok") {
+        showCallResult(data);
+      }
+    } catch (err) {
+      // остаёмся на текущем экране - можно попробовать ввести пароль ещё раз
+    } finally {
+      passwordSubmitBtn.disabled = false;
+    }
+  });
+
+  callEndButton.addEventListener("click", resetToDialer);
+  navButtons.calls.addEventListener("click", resetToDialer);
+
   logoutButton.addEventListener("click", async () => {
     await fetch("/auth/logout", { method: "POST" });
     window.location.reload();
