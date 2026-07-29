@@ -149,3 +149,49 @@
 .approval-card__action {
   flex: 1;
 }
+
+/* ---- Admin: team detail — tasks/chats section switch ---- */
+
+#admin-team-section-switch {
+  margin-bottom: var(--space-4);
+}
+
+#admin-team-tasks-section,
+#admin-team-chats-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ---- Admin: operator chat (per-team, per-character/support) ---- */
+
+#admin-team-chat-list-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.admin-chat-mode-field {
+  margin-bottom: var(--space-2);
+}
+
+.admin-chat-mode-select {
+  width: 100%;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 11px var(--space-4);
+  color: var(--text);
+  outline: none;
+  font-size: 14px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.admin-chat-mode-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.25);
+}
+
+#admin-chat-mode-error {
+  margin-bottom: var(--space-3);
+}

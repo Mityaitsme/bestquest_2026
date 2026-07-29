@@ -13,6 +13,15 @@
     manual_review: "на проверке у оператора",
   };
 
+  const CHAT_MODE_LABELS = {
+    scripted: "Сценарий",
+    operator: "Оператор",
+    gpt: "GPT",
+    muted: "Тихо",
+  };
+
+  let currentRole = null;
+
   const appScreen = document.getElementById("admin-app-screen");
   const headerNameEl = document.getElementById("admin-header-name");
   const logoutButton = document.getElementById("admin-logout-button");
@@ -65,6 +74,15 @@
   const taskListEl = document.getElementById("admin-task-list");
   const taskEmptyEl = document.getElementById("admin-task-empty");
 
+  const teamSectionButtons = {
+    tasks: document.getElementById("admin-team-section-tasks"),
+    chats: document.getElementById("admin-team-section-chats"),
+  };
+  const teamSections = {
+    tasks: document.getElementById("admin-team-tasks-section"),
+    chats: document.getElementById("admin-team-chats-section"),
+  };
+
   let currentTeam = null;
   let allTasks = [];
   let taskView = "available";
@@ -76,6 +94,19 @@
     teamsListView.hidden = false;
     loadTeams();
   }
+
+  function setTeamSection(section) {
+    for (const key of Object.keys(teamSections)) {
+      teamSections[key].hidden = key !== section;
+      teamSectionButtons[key].setAttribute("aria-selected", String(key === section));
+    }
+    if (section === "chats") {
+      showTeamChatListView();
+    }
+  }
+
+  teamSectionButtons.tasks.addEventListener("click", () => setTeamSection("tasks"));
+  teamSectionButtons.chats.addEventListener("click", () => setTeamSection("chats"));
 
   async function loadTeams() {
     try {
@@ -137,6 +168,8 @@
     detailTitleEl.textContent = team.name;
     teamsListView.hidden = true;
     teamDetailView.hidden = false;
+    teamSectionButtons.chats.hidden = currentRole !== "operator";
+    setTeamSection("tasks");
     setTaskView("available");
   }
 
@@ -269,6 +302,211 @@
   }
 
   backButton.addEventListener("click", showTeamsListView);
+
+  // ---- Team chats: chat list + thread + mode switch (operator only) ----
+
+  const teamChatListView = document.getElementById("admin-team-chat-list-view");
+  const teamChatDetailView = document.getElementById("admin-team-chat-detail-view");
+  const teamChatListEl = document.getElementById("admin-team-chat-list");
+  const teamChatListEmptyEl = document.getElementById("admin-team-chat-list-empty");
+
+  const chatBackButton = document.getElementById("admin-chat-back-button");
+  const chatDetailTitleEl = document.getElementById("admin-chat-detail-title");
+  const chatModeSelect = document.getElementById("admin-chat-mode-select");
+  const chatModeErrorEl = document.getElementById("admin-chat-mode-error");
+  const chatMessagesEl = document.getElementById("admin-chat-messages");
+  const chatInputRowEl = document.getElementById("admin-chat-input-row");
+  const chatInputEl = document.getElementById("admin-chat-input");
+  const chatSendButton = document.getElementById("admin-chat-send-button");
+
+  let currentChat = null;
+
+  function showTeamChatListView() {
+    currentChat = null;
+    teamChatDetailView.hidden = true;
+    teamChatListView.hidden = false;
+    loadTeamChats();
+  }
+
+  async function loadTeamChats() {
+    if (!currentTeam) {
+      return;
+    }
+    try {
+      const response = await fetch(`/admin/teams/${currentTeam.team_id}/chats`);
+      const data = await response.json();
+      if (data.status !== "ok") {
+        teamChatListEmptyEl.hidden = false;
+        teamChatListEmptyEl.textContent = "Не удалось загрузить чаты";
+        return;
+      }
+      renderTeamChatList(data.chats);
+    } catch (err) {
+      teamChatListEmptyEl.hidden = false;
+      teamChatListEmptyEl.textContent = "Не удалось загрузить чаты";
+    }
+  }
+
+  function renderTeamChatList(chats) {
+    teamChatListEl.innerHTML = "";
+
+    if (chats.length === 0) {
+      teamChatListEmptyEl.hidden = false;
+      teamChatListEmptyEl.textContent = "Чатов пока нет";
+      return;
+    }
+    teamChatListEmptyEl.hidden = true;
+
+    for (const chat of chats) {
+      const isSupport = chat.chat_type === "support";
+      const name = isSupport ? "Техподдержка" : chat.characters ? chat.characters.name : "Персонаж";
+
+      const item = document.createElement("div");
+      item.className = "chat-list-item";
+
+      const avatar = document.createElement("div");
+      avatar.className = "chat-list-item__avatar";
+      avatar.textContent = name.charAt(0).toUpperCase();
+      item.appendChild(avatar);
+
+      const info = document.createElement("div");
+      info.className = "chat-list-item__info";
+
+      const nameEl = document.createElement("div");
+      nameEl.className = "chat-list-item__name";
+      nameEl.textContent = name;
+      info.appendChild(nameEl);
+
+      const modeEl = document.createElement("div");
+      modeEl.className = "chat-list-item__mode";
+      modeEl.textContent = CHAT_MODE_LABELS[chat.mode] || chat.mode;
+      info.appendChild(modeEl);
+
+      item.appendChild(info);
+      item.addEventListener("click", () => openTeamChat(chat, name));
+      teamChatListEl.appendChild(item);
+    }
+  }
+
+  function openTeamChat(chat, name) {
+    currentChat = chat;
+    chatDetailTitleEl.textContent = name;
+    chatModeErrorEl.textContent = "";
+    chatModeSelect.value = chat.mode;
+    chatInputRowEl.hidden = chat.mode !== "operator";
+    teamChatListView.hidden = true;
+    teamChatDetailView.hidden = false;
+    loadChatMessages();
+  }
+
+  async function loadChatMessages() {
+    if (!currentChat) {
+      return;
+    }
+    const chatId = currentChat.id;
+    chatMessagesEl.textContent = "Загрузка…";
+    try {
+      const response = await fetch(`/admin/chats/${chatId}/messages`);
+      const data = await response.json();
+      if (!currentChat || currentChat.id !== chatId) {
+        return;
+      }
+      if (data.status !== "ok") {
+        chatMessagesEl.textContent = "Не удалось загрузить сообщения";
+        return;
+      }
+      renderChatMessages(data.messages);
+    } catch (err) {
+      if (!currentChat || currentChat.id !== chatId) {
+        return;
+      }
+      chatMessagesEl.textContent = "Не удалось загрузить сообщения";
+    }
+  }
+
+  function renderChatMessages(messages) {
+    chatMessagesEl.innerHTML = "";
+    for (const message of messages) {
+      const bubble = document.createElement("div");
+      const isOwn = message.sender_type === "character" || message.sender_type === "admin";
+      bubble.className = "chat-bubble " + (isOwn ? "chat-bubble--team" : "chat-bubble--other");
+      if (message.message_kind === "support_comment") {
+        bubble.classList.add("chat-bubble--support");
+      }
+      bubble.textContent = message.content;
+      chatMessagesEl.appendChild(bubble);
+    }
+    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+  }
+
+  chatModeSelect.addEventListener("change", async () => {
+    if (!currentChat) {
+      return;
+    }
+    const chatId = currentChat.id;
+    const newMode = chatModeSelect.value;
+    chatModeErrorEl.textContent = "";
+    chatModeSelect.disabled = true;
+    try {
+      const response = await fetch(`/admin/chats/${chatId}/mode`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: newMode }),
+      });
+      const data = await response.json();
+      if (data.status !== "ok") {
+        chatModeErrorEl.textContent = data.detail || "Не получилось сменить режим";
+        chatModeSelect.value = currentChat.mode;
+        return;
+      }
+      currentChat.mode = newMode;
+      chatInputRowEl.hidden = newMode !== "operator";
+    } catch (err) {
+      chatModeErrorEl.textContent = "Не удалось связаться с сервером";
+      chatModeSelect.value = currentChat.mode;
+    } finally {
+      chatModeSelect.disabled = false;
+    }
+  });
+
+  async function sendAdminChatMessage() {
+    const content = chatInputEl.value.trim();
+    if (!content || !currentChat) {
+      return;
+    }
+    const chatId = currentChat.id;
+    chatSendButton.disabled = true;
+    chatInputEl.disabled = true;
+
+    try {
+      const response = await fetch(`/admin/chats/${chatId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      const data = await response.json();
+      if (data.status === "ok") {
+        chatInputEl.value = "";
+        await loadChatMessages();
+      }
+    } catch (err) {
+      // сообщение просто не появится - можно попробовать отправить ещё раз
+    } finally {
+      chatSendButton.disabled = false;
+      chatInputEl.disabled = false;
+      chatInputEl.focus();
+    }
+  }
+
+  chatSendButton.addEventListener("click", sendAdminChatMessage);
+  chatInputEl.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      sendAdminChatMessage();
+    }
+  });
+
+  chatBackButton.addEventListener("click", showTeamChatListView);
 
   // ---- Reviews: manual-review queue (operator only) ----
 
@@ -566,6 +804,7 @@
 
   window.AdminApp = {
     show(username, role) {
+      currentRole = role;
       headerNameEl.textContent = `${username} (${ROLE_LABELS[role] || role})`;
       appScreen.hidden = false;
       navButtons.reviews.hidden = role !== "operator";
