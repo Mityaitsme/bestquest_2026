@@ -20,6 +20,7 @@ from supabase_client import get_supabase_client
 
 AUTH_EMAIL_DOMAIN = "team.quest.local"
 ADMIN_ROLES = ("actor", "operator")
+POSTGRES_UNIQUE_VIOLATION = "23505"
 
 
 class AuthError(Exception):
@@ -49,6 +50,10 @@ class AdminSession(Session):
 
 def _synthetic_email(entity_id: uuid.UUID) -> str:
     return f"{entity_id}@{AUTH_EMAIL_DOMAIN}"
+
+
+def _is_unique_violation(exc: Exception) -> bool:
+    return getattr(exc, "code", None) == POSTGRES_UNIQUE_VIOLATION
 
 
 def _sign_in(email: str, password: str) -> Session:
@@ -105,6 +110,8 @@ def register_team(name: str, password: str) -> TeamSession:
         # имя занято), нужно откатить уже созданного auth-пользователя, иначе
         # останется "команда-призрак" без строки в teams.
         client.auth.admin.delete_user(auth_user.user.id)
+        if _is_unique_violation(exc):
+            raise AuthError("Команда с таким названием уже существует") from exc
         raise AuthError(f"Не удалось зарегистрировать команду: {exc}") from exc
 
     session = _sign_in(email, password)
@@ -161,6 +168,8 @@ def register_admin(username: str, password: str, role: str) -> AdminSession:
         ).execute()
     except Exception as exc:  # noqa: BLE001 — та же логика отката, что и в register_team
         client.auth.admin.delete_user(auth_user.user.id)
+        if _is_unique_violation(exc):
+            raise AuthError("Админ с таким логином уже существует") from exc
         raise AuthError(f"Не удалось зарегистрировать админа: {exc}") from exc
 
     session = _sign_in(email, password)
