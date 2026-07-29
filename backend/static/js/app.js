@@ -40,6 +40,21 @@
   let allTasks = [];
   let taskView = "available";
   let tasksRequestId = 0;
+  let knownAvailableStageIds = new Set();
+  let hasRenderedTasksOnce = false;
+
+  const TASK_CARD_EXIT_MS = 260;
+
+  function animateTaskCardExit(card) {
+    return new Promise((resolve) => {
+      if (!card) {
+        resolve();
+        return;
+      }
+      card.classList.add("task-card--exit");
+      setTimeout(resolve, TASK_CARD_EXIT_MS);
+    });
+  }
 
   const chatListViewEl = document.getElementById("chat-list-view");
   const chatDetailViewEl = document.getElementById("chat-detail-view");
@@ -87,6 +102,22 @@
     const items = allTasks.filter((task) => task.status === taskView);
     taskListEl.innerHTML = "";
 
+    // Разблокированные задачи должны появляться плавно, а не резким скачком —
+    // отслеживаем, какие stage_id из "актуальных" уже показывались раньше, и
+    // анимируем только по-настоящему новые (не при первой загрузке и не при
+    // простом переключении вкладок Актуальные/Выполненные без новых данных).
+    let newlyAvailableIds = new Set();
+    if (taskView === "available") {
+      const currentIds = new Set(items.map((task) => task.stage_id));
+      if (hasRenderedTasksOnce) {
+        newlyAvailableIds = new Set(
+          [...currentIds].filter((id) => !knownAvailableStageIds.has(id))
+        );
+      }
+      knownAvailableStageIds = currentIds;
+      hasRenderedTasksOnce = true;
+    }
+
     if (items.length === 0) {
       taskEmptyEl.hidden = false;
       taskEmptyEl.textContent =
@@ -100,6 +131,9 @@
       const card = document.createElement("div");
       card.className = "task-card";
       card.dataset.open = "false";
+      if (newlyAvailableIds.has(task.stage_id)) {
+        card.classList.add("task-card--enter");
+      }
 
       const top = document.createElement("div");
       top.className = "task-card__top";
@@ -137,6 +171,20 @@
 
       taskListEl.appendChild(card);
     }
+
+    if (newlyAvailableIds.size > 0) {
+      // Небольшая задержка вместо requestAnimationFrame — нужно только
+      // отдать браузеру один тик, чтобы он успел применить начальное
+      // (невидимое) состояние карточки, прежде чем убрать класс и запустить
+      // CSS-переход к конечному виду. rAF для этого не годится: колбэки
+      // requestAnimationFrame не выполняются, пока вкладка не композит кадры
+      // (например, скрыта/свёрнута), а setTimeout работает всегда.
+      setTimeout(() => {
+        for (const enteringCard of taskListEl.querySelectorAll(".task-card--enter")) {
+          enteringCard.classList.remove("task-card--enter");
+        }
+      }, 20);
+    }
   }
 
   function buildActionArea(task, stage) {
@@ -170,6 +218,7 @@
             button.disabled = false;
             return;
           }
+          await animateTaskCardExit(wrap.closest(".task-card"));
           loadTasks();
         } catch (err) {
           error.textContent = "Не удалось связаться с сервером";
@@ -369,6 +418,7 @@
           row.classList.add("answer-field--correct");
           input.value = value;
           if (data.stage_completed) {
+            await animateTaskCardExit(container.closest(".task-card"));
             loadTasks();
           }
         } else {

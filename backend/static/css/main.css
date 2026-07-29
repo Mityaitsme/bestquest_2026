@@ -342,7 +342,9 @@ button {
   border-radius: var(--radius-md);
   padding: var(--space-4);
   cursor: pointer;
-  transition: border-color 0.15s ease, transform 0.15s ease;
+  opacity: 1;
+  transform: none;
+  transition: border-color 0.15s ease, transform 0.15s ease, opacity 0.3s ease;
 }
 
 .task-card:active {
@@ -351,6 +353,24 @@ button {
 
 .task-card[data-open="true"] {
   border-color: var(--accent);
+}
+
+/* Разблокированная задача въезжает снизу с плавным проявлением — стартовое
+   состояние применяется на монтировании, затем сразу же снимается (см.
+   renderTasks() в app.js), чтобы CSS-переход отыграл к обычному виду. */
+.task-card--enter {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+/* Выполненная задача плавно угасает перед тем, как список перезагрузится и
+   уберёт её из "Актуальных" (см. animateTaskCardExit() в app.js). */
+.task-card--exit {
+  opacity: 0;
+  transform: scale(0.97);
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
 .task-card__top {
