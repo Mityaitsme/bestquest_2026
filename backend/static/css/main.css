@@ -908,6 +908,23 @@ button {
   gap: var(--space-4);
 }
 
+/* Поле пароля — настоящий input (можно ввести слово с клавиатуры устройства),
+   но выглядит как .dialer-display, поверх которого и так его вешают в HTML;
+   цифровая клавиатура ниже просто дописывает символы в это же поле. */
+.password-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+  padding: 0;
+}
+
+.password-input::placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
 .call-view__end {
   border-color: var(--danger);
   color: var(--danger);

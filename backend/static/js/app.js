@@ -750,7 +750,6 @@
   };
 
   let dialedNumber = "";
-  let passwordDigits = "";
   let currentPhaseId = null;
 
   function buildKeypad(container, onPress) {
@@ -787,8 +786,7 @@
     dialerViewEl.hidden = true;
     callViewEl.hidden = false;
     passwordSectionEl.hidden = true;
-    passwordDigits = "";
-    passwordDisplayEl.textContent = "";
+    passwordDisplayEl.value = "";
 
     if (!data.connected) {
       callStatusEl.textContent = data.outcome
@@ -831,12 +829,12 @@
   });
 
   buildKeypad(passwordKeypadEl, (key) => {
-    passwordDigits += key;
-    passwordDisplayEl.textContent = passwordDigits;
+    passwordDisplayEl.value += key;
   });
 
   passwordSubmitBtn.addEventListener("click", async () => {
-    if (!currentPhaseId || !passwordDigits) {
+    const password = passwordDisplayEl.value.trim();
+    if (!currentPhaseId || !password) {
       return;
     }
     passwordSubmitBtn.disabled = true;
@@ -844,7 +842,7 @@
       const response = await fetch(`/calls/phases/${currentPhaseId}/password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: passwordDigits }),
+        body: JSON.stringify({ password }),
       });
       const data = await response.json();
       if (data.status === "ok") {
@@ -854,6 +852,13 @@
       // остаёмся на текущем экране - можно попробовать ввести пароль ещё раз
     } finally {
       passwordSubmitBtn.disabled = false;
+    }
+  });
+
+  passwordDisplayEl.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      passwordSubmitBtn.click();
     }
   });
 
