@@ -45,6 +45,7 @@ from tasks import (
     TaskError,
     complete_checkbox_stage,
     list_team_tasks,
+    list_teams_overview,
     mark_stage_completed,
     seed_team_progress,
 )
@@ -188,6 +189,12 @@ def create_app() -> Flask:
         if session.get("identity") != "team":
             return jsonify(status="error", detail="Требуется вход как команда"), 401
         return jsonify(status="ok", tasks=list_team_tasks(session["team_id"]))
+
+    @app.get("/admin/teams")
+    def admin_list_teams() -> ResponseReturnValue:
+        if session.get("identity") != "admin":
+            return jsonify(status="error", detail="Требуется вход как админ"), 401
+        return jsonify(status="ok", teams=list_teams_overview())
 
     @app.get("/admin/teams/<team_id>/tasks")
     def admin_get_team_tasks(team_id: str) -> ResponseReturnValue:

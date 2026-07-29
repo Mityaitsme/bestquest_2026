@@ -55,6 +55,43 @@ def list_team_tasks(team_id: str) -> list[dict]:
     return result.data
 
 
+def list_teams_overview() -> list[dict]:
+    """Для первой вкладки админки: все команды с % пройденных этапов и
+    временем последней выполненной задачи. Команды, которые дольше всего
+    не выполняли ни одной задачи (или ещё ни одной не выполнили), — первыми."""
+    client = get_supabase_client()
+
+    teams = client.table("teams").select("id, name, created_at").execute().data
+    total_stages = len(client.table("stages").select("id").execute().data)
+    progress_rows = (
+        client.table("team_stage_progress").select("team_id, status, completed_at").execute().data
+    )
+
+    overview = []
+    for team in teams:
+        team_progress = [row for row in progress_rows if row["team_id"] == team["id"]]
+        completed_ats = [
+            row["completed_at"]
+            for row in team_progress
+            if row["status"] == "completed" and row["completed_at"]
+        ]
+
+        overview.append(
+            {
+                "team_id": team["id"],
+                "name": team["name"],
+                "registered_at": team["created_at"],
+                "progress_percent": (
+                    round(len(completed_ats) / total_stages * 100) if total_stages else 0
+                ),
+                "last_task_completed_at": max(completed_ats) if completed_ats else None,
+            }
+        )
+
+    overview.sort(key=lambda t: t["last_task_completed_at"] or "")
+    return overview
+
+
 def mark_stage_completed(
     team_id: str,
     stage_id: str,
