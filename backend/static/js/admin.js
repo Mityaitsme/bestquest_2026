@@ -267,18 +267,50 @@
     wrap.className = "task-action";
     wrap.addEventListener("click", (event) => event.stopPropagation());
 
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "btn-primary task-action__button";
-    button.textContent = "Отметить выполненным";
-    wrap.appendChild(button);
+    const askButton = document.createElement("button");
+    askButton.type = "button";
+    askButton.className = "btn-primary task-action__button";
+    askButton.textContent = "Отметить выполненным";
+    wrap.appendChild(askButton);
+
+    const confirmRow = document.createElement("div");
+    confirmRow.className = "task-action__confirm-row";
+    confirmRow.hidden = true;
+
+    const confirmButton = document.createElement("button");
+    confirmButton.type = "button";
+    confirmButton.className = "btn-primary task-action__button task-action__confirm-button";
+    confirmButton.textContent = "Да, точно";
+    confirmRow.appendChild(confirmButton);
+
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.className = "btn-secondary task-action__button task-action__confirm-button";
+    cancelButton.textContent = "Отмена";
+    confirmRow.appendChild(cancelButton);
+
+    wrap.appendChild(confirmRow);
 
     const error = document.createElement("p");
     error.className = "form-error";
     wrap.appendChild(error);
 
-    button.addEventListener("click", async () => {
-      button.disabled = true;
+    function showAsk() {
+      askButton.hidden = false;
+      confirmRow.hidden = true;
+      error.textContent = "";
+    }
+
+    askButton.addEventListener("click", () => {
+      askButton.hidden = true;
+      confirmRow.hidden = false;
+    });
+
+    cancelButton.addEventListener("click", showAsk);
+
+    confirmButton.addEventListener("click", async () => {
+      confirmButton.disabled = true;
+      cancelButton.disabled = true;
       error.textContent = "";
       try {
         const response = await fetch(
@@ -288,13 +320,15 @@
         const data = await response.json();
         if (data.status !== "ok") {
           error.textContent = data.detail || "Не получилось отметить";
-          button.disabled = false;
+          confirmButton.disabled = false;
+          cancelButton.disabled = false;
           return;
         }
         loadTasks();
       } catch (err) {
         error.textContent = "Не удалось связаться с сервером";
-        button.disabled = false;
+        confirmButton.disabled = false;
+        cancelButton.disabled = false;
       }
     });
 

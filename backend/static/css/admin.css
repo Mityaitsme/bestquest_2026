@@ -195,3 +195,14 @@
 #admin-chat-mode-error {
   margin-bottom: var(--space-3);
 }
+
+/* ---- Admin: "точно?" confirm step for actor mark-complete ---- */
+
+.task-action__confirm-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.task-action__confirm-button {
+  flex: 1;
+}
