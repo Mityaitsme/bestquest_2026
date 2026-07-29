@@ -80,6 +80,32 @@ def list_messages(team_id: str, chat_id: str) -> list[dict]:
     )
 
 
+def list_new_messages_since(team_id: str, since: str) -> list[dict]:
+    """Для лёгкого polling-опроса на фронтенде команды (уведомления о новых
+    сообщениях): не от самой команды, во всех её чатах, появившиеся после
+    `since` (ISO-время последнего опроса). Отдаём только chat_id/sender_type/
+    created_at — этого достаточно, чтобы фронтенд понял, в каком чате
+    появилось новое и стоит ли тихонько обновить открытый сейчас чат или
+    показать тост; сам текст сообщения довеpяем обычной загрузке чата."""
+    client = get_supabase_client()
+    chat_ids = [
+        row["id"] for row in client.table("chats").select("id").eq("team_id", team_id).execute().data
+    ]
+    if not chat_ids:
+        return []
+
+    return (
+        client.table("messages")
+        .select("chat_id, sender_type, created_at")
+        .in_("chat_id", chat_ids)
+        .neq("sender_type", "team")
+        .gt("created_at", since)
+        .order("created_at")
+        .execute()
+        .data
+    )
+
+
 def send_team_message(team_id: str, chat_id: str, content: str) -> dict:
     """Возвращает {"mode": ..., "character_id": ...} — чтобы вызывающий код
     мог решить, нужно ли после этого запускать автоответ ChatGPT (mode == 'gpt')."""

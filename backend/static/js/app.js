@@ -68,8 +68,10 @@
   const chatSendButton = document.getElementById("chat-send-button");
   const chatOptionsEl = document.getElementById("chat-options");
   const chatReadonlyNote = document.getElementById("chat-readonly-note");
+  const toastContainerEl = document.getElementById("toast-container");
 
   let currentChat = null;
+  let allChats = [];
 
   function setTab(tab) {
     for (const key of Object.keys(panels)) {
@@ -447,6 +449,13 @@
     });
   }
 
+  function getChatDisplayName(chat) {
+    if (chat.chat_type === "support") {
+      return "Техподдержка";
+    }
+    return chat.characters ? chat.characters.name : "Персонаж";
+  }
+
   async function loadChats() {
     try {
       const response = await fetch("/chats");
@@ -456,6 +465,7 @@
         chatListEmptyEl.textContent = "Не удалось загрузить чаты";
         return;
       }
+      allChats = data.chats;
       renderChatList(data.chats);
     } catch (err) {
       chatListEmptyEl.hidden = false;
@@ -474,8 +484,7 @@
     chatListEmptyEl.hidden = true;
 
     for (const chat of chats) {
-      const isSupport = chat.chat_type === "support";
-      const name = isSupport ? "Техподдержка" : (chat.characters ? chat.characters.name : "Персонаж");
+      const name = getChatDisplayName(chat);
 
       const item = document.createElement("div");
       item.className = "chat-list-item";
@@ -525,6 +534,81 @@
     }
 
     loadMessages();
+  }
+
+  const TOAST_VISIBLE_MS = 4000;
+
+  function showToast(text, onClick) {
+    const toast = document.createElement("div");
+    toast.className = "toast";
+    toast.textContent = text;
+    if (onClick) {
+      toast.addEventListener("click", onClick);
+    }
+    toastContainerEl.appendChild(toast);
+
+    // Небольшая задержка вместо requestAnimationFrame — тик, чтобы браузер
+    // успел отрисовать начальное (невидимое) состояние тоста, прежде чем
+    // запустить CSS-переход; rAF не годится, см. известную особенность
+    // непоказанной вкладки браузера в памяти проекта.
+    setTimeout(() => toast.classList.add("toast--visible"), 20);
+    setTimeout(() => {
+      toast.classList.remove("toast--visible");
+      setTimeout(() => toast.remove(), 300);
+    }, TOAST_VISIBLE_MS);
+  }
+
+  const MESSAGE_POLL_INTERVAL_MS = 10000;
+  let messagePollTimer = null;
+  let lastMessagePollAt = null;
+
+  function startMessagePolling() {
+    stopMessagePolling();
+    lastMessagePollAt = new Date().toISOString();
+    messagePollTimer = setInterval(pollNewMessages, MESSAGE_POLL_INTERVAL_MS);
+  }
+
+  function stopMessagePolling() {
+    if (messagePollTimer) {
+      clearInterval(messagePollTimer);
+      messagePollTimer = null;
+    }
+  }
+
+  async function pollNewMessages() {
+    const since = lastMessagePollAt;
+    try {
+      const response = await fetch(`/chats/new-messages?since=${encodeURIComponent(since)}`);
+      const data = await response.json();
+      if (data.status !== "ok" || data.messages.length === 0) {
+        return;
+      }
+      lastMessagePollAt = data.messages[data.messages.length - 1].created_at;
+
+      const chatIdsWithNewMessages = new Set(data.messages.map((m) => m.chat_id));
+
+      if (currentChat && chatIdsWithNewMessages.has(currentChat.id)) {
+        loadMessages();
+        chatIdsWithNewMessages.delete(currentChat.id);
+      }
+
+      for (const chatId of chatIdsWithNewMessages) {
+        const chat = allChats.find((c) => c.id === chatId);
+        const name = chat ? getChatDisplayName(chat) : "Чат";
+        showToast(`Новое сообщение: ${name}`, () => {
+          setTab("chat");
+          chatListViewEl.hidden = true;
+          chatDetailViewEl.hidden = false;
+          if (chat) {
+            openChat(chat, name);
+          } else {
+            loadChats();
+          }
+        });
+      }
+    } catch (err) {
+      // пропускаем один цикл опроса - следующий тик попробует снова
+    }
   }
 
   async function loadDialogue() {
@@ -896,6 +980,8 @@
       setTab("tasks");
       setTaskView("available");
       loadTasks();
+      loadChats(); // заранее знаем имена чатов для тостов, даже если команда ещё не открывала вкладку "Чат"
+      startMessagePolling();
     },
   };
 })();

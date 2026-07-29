@@ -15,6 +15,7 @@ from chat import (
     get_character_id_for_chat,
     list_messages,
     list_messages_admin,
+    list_new_messages_since,
     list_team_chats,
     list_team_chats_admin,
     seed_team_chats,
@@ -350,6 +351,17 @@ def create_app() -> Flask:
         if session.get("identity") != "team":
             return jsonify(status="error", detail="Требуется вход как команда"), 401
         return jsonify(status="ok", chats=list_team_chats(session["team_id"]))
+
+    @app.get("/chats/new-messages")
+    def get_new_messages() -> ResponseReturnValue:
+        if session.get("identity") != "team":
+            return jsonify(status="error", detail="Требуется вход как команда"), 401
+
+        since = request.args.get("since", "")
+        if not since:
+            return jsonify(status="error", detail="Не указан параметр since"), 400
+
+        return jsonify(status="ok", messages=list_new_messages_since(session["team_id"], since))
 
     @app.get("/chats/<chat_id>/messages")
     def get_chat_messages(chat_id: str) -> ResponseReturnValue:
