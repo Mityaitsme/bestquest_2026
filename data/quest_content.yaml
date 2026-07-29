@@ -21,6 +21,22 @@
 #                        ОДИН И ТОТ ЖЕ список accepted у каждого поля группы
 #                        и order_sensitive: false
 #
+# Скриптованный диалог персонажа (необязательный ключ dialogue у персонажа):
+#   nodes            — список узлов
+#     key            — локальный id узла внутри этого персонажа
+#     entry: true     — ровно один такой узел, с него начинается диалог
+#     intro          — что персонаж "говорит" при попадании в этот узел
+#     requires_all_options — узел не отпускает команду, пока не выбраны
+#                        ВСЕ варианты по одному (выбор не влияет на сюжет,
+#                        нужно просто перебрать все); next в этом случае —
+#                        куда идти, когда варианты закончились
+#     options        — 1-4 варианта ответа команды:
+#       key, text, reply — id, текст кнопки, ответ персонажа на этот выбор
+#       next               — key следующего узла (не указан = диалог кончается)
+#       requires_admin_approval — "блок-пост": ответ уже показан, но команда
+#                        не продвинется, пока оператор не одобрит через
+#                        /admin/dialogue/approvals
+#
 # Этот файл — пример/заготовка. Запуск загрузки:
 #   cd backend && python import_content.py
 # (по умолчанию читает ../data/quest_content.yaml)
@@ -30,6 +46,45 @@ characters:
     name: "Куратор"
     nickname: "curator_2026"
     public_lore: "Таинственный куратор квеста."
+    dialogue:
+      nodes:
+        - key: start
+          entry: true
+          intro: "Привет! Что думаешь?"
+          options:
+            - key: good
+              text: "Хорошо"
+              reply: "Рад слышать"
+              next: block
+            - key: bad
+              text: "Плохо"
+              reply: "Сочувствую"
+              next: block
+        - key: block
+          intro: "Расскажи что-то важное из дневника"
+          options:
+            - key: treasure
+              text: "Про сокровище"
+              reply: "Да! Именно это."
+              requires_admin_approval: true
+              next: exhaust
+            - key: breakfast
+              text: "Про завтрак"
+              reply: "Хм, не то. Подумай ещё."
+              next: block
+        - key: exhaust
+          intro: "Назови все ключевые слова"
+          requires_all_options: true
+          options:
+            - key: w1
+              text: "Слово1"
+              reply: "Записал"
+            - key: w2
+              text: "Слово2"
+              reply: "Записал"
+            - key: w3
+              text: "Слово3"
+              reply: "Записал"
 
 stages:
   - slug: intro

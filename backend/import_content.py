@@ -1,17 +1,20 @@
 """Загрузчик игрового контента из YAML в Supabase
-(персонажи, этапы, граф, поля ответа, телефонные номера/звонки).
+(персонажи + их скриптованные диалоги, этапы, граф, поля ответа,
+телефонные номера/звонки).
 
 Запуск (из папки backend, с активированным venv):
     python import_content.py [путь_к_файлу]
 По умолчанию читает ../data/quest_content.yaml.
 
 Идемпотентно: персонажи/этапы/номера обновляются по slug/number, поля — по
-(stage, field_key), фазы звонка — по (номер, content_key). Принятые ответы
-поля и связи success/failure фаз полностью пересоздаются из файла при
-каждом запуске. НИЧЕГО не удаляется автоматически: если убрать этап,
-персонажа или номер из YAML, в базе он останется (у команд может быть
-привязанный прогресс/чаты) — в конце скрипт только предупредит о таких
-"осиротевших" записях.
+(stage, field_key), фазы звонка — по (номер, content_key), узлы диалога —
+по (персонаж, content_key), варианты — по (узел, content_key). Принятые
+ответы поля и связи success/failure фаз полностью пересоздаются из файла
+при каждом запуске. НИЧЕГО не удаляется автоматически: если убрать этап,
+персонажа, номер или узел диалога из YAML, в базе он останется (у команд
+может быть привязанный прогресс/чаты) — в конце скрипт только предупредит
+о таких "осиротевших" этапах/персонажах/номерах (не про отдельные узлы
+диалога — это было бы избыточно для данного этапа).
 """
 
 from __future__ import annotations
@@ -56,6 +59,68 @@ def validate_characters(characters: list[dict[str, Any]]) -> None:
         if nickname in seen_nicknames:
             raise ContentError(f"Повторяющийся nickname персонажа: {nickname}")
         seen_nicknames.add(nickname)
+
+
+def validate_dialogues(characters: list[dict[str, Any]]) -> None:
+    for character in characters:
+        dialogue = character.get("dialogue")
+        if not dialogue:
+            continue
+        slug = character["slug"]
+        nodes = dialogue.get("nodes", [])
+        if not nodes:
+            raise ContentError(f"Персонаж '{slug}': dialogue указан, но нет nodes")
+
+        node_keys = {node.get("key") for node in nodes}
+        seen_node_keys: set[str] = set()
+        entry_count = 0
+
+        for node in nodes:
+            key = node.get("key")
+            if not key:
+                raise ContentError(f"Персонаж '{slug}': у узла диалога нет key: {node}")
+            if key in seen_node_keys:
+                raise ContentError(f"Персонаж '{slug}': повторяющийся key узла '{key}'")
+            seen_node_keys.add(key)
+            if node.get("entry"):
+                entry_count += 1
+
+            node_next = node.get("next")
+            if node_next and node_next not in node_keys:
+                raise ContentError(
+                    f"Персонаж '{slug}', узел '{key}': next ссылается "
+                    f"на неизвестный узел '{node_next}'"
+                )
+
+            options = node.get("options", [])
+            if not options:
+                raise ContentError(f"Персонаж '{slug}', узел '{key}': нет options")
+
+            seen_option_keys: set[str] = set()
+            for option in options:
+                okey = option.get("key")
+                if not okey or not option.get("text") or not option.get("reply"):
+                    raise ContentError(
+                        f"Персонаж '{slug}', узел '{key}': у варианта нет key/text/reply: {option}"
+                    )
+                if okey in seen_option_keys:
+                    raise ContentError(
+                        f"Персонаж '{slug}', узел '{key}': повторяющийся key варианта '{okey}'"
+                    )
+                seen_option_keys.add(okey)
+
+                option_next = option.get("next")
+                if option_next and option_next not in node_keys:
+                    raise ContentError(
+                        f"Персонаж '{slug}', узел '{key}', вариант '{okey}': next "
+                        f"ссылается на неизвестный узел '{option_next}'"
+                    )
+
+        if entry_count != 1:
+            raise ContentError(
+                f"Персонаж '{slug}': dialogue должен иметь ровно один входной узел "
+                f"(entry: true), сейчас {entry_count}"
+            )
 
 
 def validate_stages(stages: list[dict[str, Any]]) -> None:
@@ -149,6 +214,7 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
     stages = data.get("stages", [])
     phone_numbers = data.get("phone_numbers", [])
     validate_characters(characters)
+    validate_dialogues(characters)
     validate_stages(stages)
     validate_phone_numbers(phone_numbers)
 
@@ -172,6 +238,58 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
         )
         character_slug_to_id[character["slug"]] = row["id"]
         print(f"персонаж: {character['slug']}")
+
+    for character in characters:
+        dialogue = character.get("dialogue")
+        if not dialogue:
+            continue
+        character_id = character_slug_to_id[character["slug"]]
+        nodes = dialogue.get("nodes", [])
+
+        # Первый проход: создать/обновить узлы без next_node_id (нужны id
+        # остальных узлов, включая ещё не созданные).
+        key_to_node_id: dict[str, str] = {}
+        for node in nodes:
+            row = (
+                client.table("dialogue_nodes")
+                .upsert(
+                    {
+                        "character_id": character_id,
+                        "content_key": node["key"],
+                        "intro_message": node.get("intro", ""),
+                        "is_start": node.get("entry", False),
+                        "requires_all_options": node.get("requires_all_options", False),
+                    },
+                    on_conflict="character_id,content_key",
+                )
+                .execute()
+                .data[0]
+            )
+            key_to_node_id[node["key"]] = row["id"]
+
+        # Второй проход: node.next_node_id (для requires_all_options) и все опции.
+        for node in nodes:
+            node_id = key_to_node_id[node["key"]]
+
+            if node.get("next"):
+                client.table("dialogue_nodes").update(
+                    {"next_node_id": key_to_node_id[node["next"]]}
+                ).eq("id", node_id).execute()
+
+            for option in node.get("options", []):
+                client.table("dialogue_options").upsert(
+                    {
+                        "node_id": node_id,
+                        "content_key": option["key"],
+                        "option_text": option["text"],
+                        "reply_message": option["reply"],
+                        "next_node_id": key_to_node_id.get(option.get("next")),
+                        "requires_admin_approval": option.get("requires_admin_approval", False),
+                    },
+                    on_conflict="node_id,content_key",
+                ).execute()
+
+        print(f"диалог персонажа '{character['slug']}': {len(nodes)} узлов")
 
     slug_to_id: dict[str, str] = {}
     for stage in stages:
