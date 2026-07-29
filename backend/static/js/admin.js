@@ -462,7 +462,10 @@
     chatMessagesEl.innerHTML = "";
     for (const message of messages) {
       const bubble = document.createElement("div");
-      const isOwn = message.sender_type === "character" || message.sender_type === "admin";
+      const isOwn =
+        message.sender_type === "character" ||
+        message.sender_type === "admin" ||
+        message.sender_type === "system";
       bubble.className = "chat-bubble " + (isOwn ? "chat-bubble--team" : "chat-bubble--other");
       if (message.message_kind === "support_comment") {
         bubble.classList.add("chat-bubble--support");

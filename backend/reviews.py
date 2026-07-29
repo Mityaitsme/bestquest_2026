@@ -112,7 +112,7 @@ def review_decision(
 
     review = (
         client.table("manual_reviews")
-        .select("team_id, stage_id, status")
+        .select("team_id, stage_id, status, stages(title)")
         .eq("id", review_id)
         .execute()
         .data
@@ -139,3 +139,44 @@ def review_decision(
             completed_by_admin_id=admin_id,
             completion_method="manual_review",
         )
+
+    if comment:
+        _notify_team_of_review_comment(
+            client,
+            team_id=review[0]["team_id"],
+            stage_title=review[0]["stages"]["title"] if review[0]["stages"] else "этап",
+            accept=accept,
+            comment=comment,
+            admin_id=admin_id,
+        )
+
+
+def _notify_team_of_review_comment(
+    client, team_id: str, stage_title: str, accept: bool, comment: str, admin_id: str
+) -> None:
+    """Комментарий оператора к решению по проверке должен быть виден команде —
+    кладём его в чат техподдержки команды отдельным "служебным" сообщением
+    (message_kind=support_comment, тот же вид, что и у ручных ответов
+    техподдержки, но sender_type=system, т.к. это не оператор печатает вручную,
+    а автоматическое следствие его решения)."""
+    support_chat = (
+        client.table("chats")
+        .select("id")
+        .eq("team_id", team_id)
+        .eq("chat_type", "support")
+        .execute()
+        .data
+    )
+    if not support_chat:
+        return
+
+    verdict = "принят" if accept else "отклонён"
+    client.table("messages").insert(
+        {
+            "chat_id": support_chat[0]["id"],
+            "sender_type": "system",
+            "sender_admin_id": admin_id,
+            "content": f"Ответ по заданию «{stage_title}» {verdict}. {comment}",
+            "message_kind": "support_comment",
+        }
+    ).execute()
