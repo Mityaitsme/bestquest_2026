@@ -93,6 +93,11 @@
       description.textContent = stage.description || "";
       card.appendChild(description);
 
+      const action = buildActionArea(task, stage);
+      if (action) {
+        description.appendChild(action);
+      }
+
       card.addEventListener("click", () => {
         const isOpen = card.dataset.open === "true";
         card.dataset.open = isOpen ? "false" : "true";
@@ -100,6 +105,52 @@
 
       taskListEl.appendChild(card);
     }
+  }
+
+  function buildActionArea(task, stage) {
+    if (task.status !== "available") {
+      return null;
+    }
+
+    if (stage.completion_type === "checkbox") {
+      const wrap = document.createElement("div");
+      wrap.className = "task-action";
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn-primary task-action__button";
+      button.textContent = "Подтвердить";
+
+      const error = document.createElement("p");
+      error.className = "form-error";
+
+      button.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        button.disabled = true;
+        error.textContent = "";
+        try {
+          const response = await fetch(`/tasks/${task.stage_id}/checkbox-complete`, {
+            method: "POST",
+          });
+          const data = await response.json();
+          if (data.status !== "ok") {
+            error.textContent = data.detail || "Не получилось подтвердить";
+            button.disabled = false;
+            return;
+          }
+          loadTasks();
+        } catch (err) {
+          error.textContent = "Не удалось связаться с сервером";
+          button.disabled = false;
+        }
+      });
+
+      wrap.appendChild(button);
+      wrap.appendChild(error);
+      return wrap;
+    }
+
+    return null;
   }
 
   async function loadTasks() {
