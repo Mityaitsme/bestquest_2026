@@ -51,6 +51,7 @@
   const chatInputRow = document.getElementById("chat-input-row");
   const chatInput = document.getElementById("chat-input");
   const chatSendButton = document.getElementById("chat-send-button");
+  const chatOptionsEl = document.getElementById("chat-options");
   const chatReadonlyNote = document.getElementById("chat-readonly-note");
 
   let currentChat = null;
@@ -459,17 +460,112 @@
     chatListViewEl.hidden = true;
     chatDetailViewEl.hidden = false;
 
-    const canSend = chat.mode === "operator" || chat.mode === "gpt";
-    chatInputRow.hidden = !canSend;
-    chatReadonlyNote.hidden = canSend;
-    if (!canSend) {
-      chatReadonlyNote.textContent =
-        chat.mode === "scripted"
-          ? "В этом чате пока доступны только варианты ответа (появятся на следующем этапе)."
-          : "Сейчас в этом чате нельзя писать.";
+    chatInputRow.hidden = true;
+    chatOptionsEl.hidden = true;
+    chatReadonlyNote.hidden = true;
+
+    if (chat.mode === "operator" || chat.mode === "gpt") {
+      chatInputRow.hidden = false;
+    } else if (chat.mode === "scripted") {
+      chatOptionsEl.hidden = false;
+      loadDialogue();
+    } else {
+      chatReadonlyNote.hidden = false;
+      chatReadonlyNote.textContent = "Сейчас в этом чате нельзя писать.";
     }
 
     loadMessages();
+  }
+
+  async function loadDialogue() {
+    if (!currentChat) {
+      return;
+    }
+    const chatId = currentChat.id;
+    chatOptionsEl.textContent = "Загрузка…";
+    try {
+      const response = await fetch(`/chats/${chatId}/dialogue`);
+      const data = await response.json();
+      if (!currentChat || currentChat.id !== chatId) {
+        return;
+      }
+      if (data.status !== "ok") {
+        chatOptionsEl.textContent = data.detail || "Не удалось загрузить варианты ответа";
+        return;
+      }
+      renderDialogueOptions(data);
+    } catch (err) {
+      if (!currentChat || currentChat.id !== chatId) {
+        return;
+      }
+      chatOptionsEl.textContent = "Не удалось загрузить варианты ответа";
+    }
+  }
+
+  function renderDialogueOptions(state, note) {
+    chatOptionsEl.innerHTML = "";
+
+    if (note) {
+      const noteEl = document.createElement("p");
+      noteEl.className = "chat-options__note";
+      noteEl.textContent = note;
+      chatOptionsEl.appendChild(noteEl);
+    }
+
+    if (state.finished || !state.options || state.options.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "chat-options__note";
+      empty.textContent = "Пока новых реплик нет.";
+      chatOptionsEl.appendChild(empty);
+      return;
+    }
+
+    for (const option of state.options) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "chat-option-btn";
+      button.textContent = option.text;
+      button.addEventListener("click", () => chooseDialogueOption(option.id));
+      chatOptionsEl.appendChild(button);
+    }
+  }
+
+  async function chooseDialogueOption(optionId) {
+    if (!currentChat) {
+      return;
+    }
+    const chatId = currentChat.id;
+    for (const button of chatOptionsEl.querySelectorAll(".chat-option-btn")) {
+      button.disabled = true;
+    }
+
+    try {
+      const response = await fetch(`/chats/${chatId}/dialogue/options/${optionId}/choose`, {
+        method: "POST",
+      });
+      const data = await response.json();
+      if (!currentChat || currentChat.id !== chatId) {
+        return;
+      }
+      if (data.status !== "ok") {
+        for (const button of chatOptionsEl.querySelectorAll(".chat-option-btn")) {
+          button.disabled = false;
+        }
+        return;
+      }
+      await loadMessages();
+      renderDialogueOptions(
+        data.state,
+        data.pending_approval ? "Ответ отправлен — ждите одобрения оператора." : null
+      );
+    } catch (err) {
+      if (!currentChat || currentChat.id !== chatId) {
+        return;
+      }
+      for (const button of chatOptionsEl.querySelectorAll(".chat-option-btn")) {
+        button.disabled = false;
+      }
+    }
   }
 
   chatBackButton.addEventListener("click", () => {
