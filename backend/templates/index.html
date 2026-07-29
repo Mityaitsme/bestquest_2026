@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Квест — вход{% endblock %}
+
+{% block content %}
+<main id="root">
+  <section id="auth-screen" class="auth-screen fade-swap" hidden>
+    <div class="auth-brand">
+      <div class="auth-brand__mark" aria-hidden="true">&#128274;</div>
+      <div class="auth-brand__title">Квест</div>
+      <div class="auth-brand__subtitle">Войдите в аккаунт команды, чтобы продолжить</div>
+    </div>
+
+    <div class="auth-card">
+      <div class="auth-tabs" role="tablist">
+        <button type="button" class="auth-tab" id="tab-login" role="tab" aria-selected="true">Вход</button>
+        <button type="button" class="auth-tab" id="tab-register" role="tab" aria-selected="false">Новая команда</button>
+      </div>
+
+      <form id="auth-form" class="auth-form" autocomplete="off">
+        <div class="field">
+          <label for="team-name">Название команды</label>
+          <input type="text" id="team-name" name="name" required autocomplete="username">
+        </div>
+        <div class="field">
+          <label for="team-password">Пароль</label>
+          <input type="password" id="team-password" name="password" required autocomplete="current-password">
+        </div>
+        <p class="form-error" id="auth-error" role="alert"></p>
+        <button type="submit" class="btn-primary" id="auth-submit">Войти</button>
+      </form>
+    </div>
+  </section>
+
+  <section id="welcome-screen" class="welcome-screen fade-swap" hidden>
+    <div class="welcome-screen__team" id="welcome-team-name"></div>
+    <p class="welcome-screen__hint">
+      Основной экран задач, чата и звонков появится на следующих этапах.
+    </p>
+    <button type="button" class="btn-secondary" id="logout-button">Выйти</button>
+  </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+{% endblock %}

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from flask import Flask, jsonify, request, session
+from flask import Flask, jsonify, render_template, request, session
 from flask.typing import ResponseReturnValue
 
 from answers import AnswerError, get_stage_fields, submit_field_answer
@@ -68,6 +68,10 @@ def create_app() -> Flask:
             return jsonify(status="error", detail="Требуется вход как оператор"), 403
         return None
 
+    @app.get("/")
+    def index() -> ResponseReturnValue:
+        return render_template("index.html")
+
     @app.get("/health")
     def health() -> ResponseReturnValue:
         return jsonify(status="ok")
@@ -104,6 +108,7 @@ def create_app() -> Flask:
         session.permanent = True
         session["identity"] = "team"
         session["team_id"] = team_session.team_id
+        session["team_name"] = team_session.name
 
         return jsonify(
             status="ok",
@@ -129,6 +134,7 @@ def create_app() -> Flask:
         session.permanent = True
         session["identity"] = "team"
         session["team_id"] = team_session.team_id
+        session["team_name"] = team_session.name
 
         return jsonify(
             status="ok",
@@ -169,7 +175,12 @@ def create_app() -> Flask:
     def auth_me() -> ResponseReturnValue:
         identity = session.get("identity")
         if identity == "team":
-            return jsonify(status="ok", identity="team", team_id=session.get("team_id"))
+            return jsonify(
+                status="ok",
+                identity="team",
+                team_id=session.get("team_id"),
+                name=session.get("team_name"),
+            )
         if identity == "admin":
             return jsonify(
                 status="ok",
