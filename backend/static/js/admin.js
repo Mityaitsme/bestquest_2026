@@ -20,10 +20,12 @@
   const navButtons = {
     teams: document.getElementById("admin-tab-teams"),
     reviews: document.getElementById("admin-tab-reviews"),
+    approvals: document.getElementById("admin-tab-approvals"),
   };
   const sections = {
     teams: document.getElementById("admin-panel-teams"),
     reviews: document.getElementById("admin-panel-reviews"),
+    approvals: document.getElementById("admin-panel-approvals"),
   };
 
   function setSection(section) {
@@ -428,6 +430,120 @@
     return wrap;
   }
 
+  // ---- Dialogue approvals: scripted-dialogue options awaiting sign-off (operator only) ----
+
+  const approvalListEl = document.getElementById("admin-approval-list");
+  const approvalListEmptyEl = document.getElementById("admin-approval-list-empty");
+
+  async function loadApprovals() {
+    try {
+      const response = await fetch("/admin/dialogue/approvals");
+      const data = await response.json();
+      if (data.status !== "ok") {
+        approvalListEmptyEl.hidden = false;
+        approvalListEmptyEl.textContent = "Не удалось загрузить заявки";
+        return;
+      }
+      renderApprovals(data.approvals);
+    } catch (err) {
+      approvalListEmptyEl.hidden = false;
+      approvalListEmptyEl.textContent = "Не удалось загрузить заявки";
+    }
+  }
+
+  function renderApprovals(approvals) {
+    approvalListEl.innerHTML = "";
+
+    if (approvals.length === 0) {
+      approvalListEmptyEl.hidden = false;
+      approvalListEmptyEl.textContent = "Заявок на одобрение нет";
+      return;
+    }
+    approvalListEmptyEl.hidden = true;
+
+    for (const approval of approvals) {
+      approvalListEl.appendChild(buildApprovalCard(approval));
+    }
+  }
+
+  function buildApprovalCard(approval) {
+    const card = document.createElement("div");
+    card.className = "approval-card";
+
+    const team = document.createElement("div");
+    team.className = "approval-card__team";
+    team.textContent = approval.teams ? approval.teams.name : "Команда";
+    card.appendChild(team);
+
+    const meta = document.createElement("div");
+    meta.className = "approval-card__meta";
+    meta.textContent = formatDateTime(approval.created_at);
+    card.appendChild(meta);
+
+    const option = approval.dialogue_options || {};
+
+    const chosen = document.createElement("p");
+    chosen.className = "approval-card__text";
+    chosen.textContent = `Команда выбрала: ${option.option_text || ""}`;
+    card.appendChild(chosen);
+
+    const reply = document.createElement("p");
+    reply.className = "approval-card__text approval-card__text--muted";
+    reply.textContent = `Ответ персонажа: ${option.reply_message || ""}`;
+    card.appendChild(reply);
+
+    const actions = document.createElement("div");
+    actions.className = "approval-card__actions";
+
+    const approveButton = document.createElement("button");
+    approveButton.type = "button";
+    approveButton.className = "btn-primary approval-card__action";
+    approveButton.textContent = "Одобрить";
+    actions.appendChild(approveButton);
+
+    const rejectButton = document.createElement("button");
+    rejectButton.type = "button";
+    rejectButton.className = "btn-secondary approval-card__action";
+    rejectButton.textContent = "Отклонить";
+    actions.appendChild(rejectButton);
+
+    card.appendChild(actions);
+
+    const error = document.createElement("p");
+    error.className = "form-error";
+    card.appendChild(error);
+
+    async function decide(approve) {
+      approveButton.disabled = true;
+      rejectButton.disabled = true;
+      error.textContent = "";
+      try {
+        const response = await fetch(`/admin/dialogue/approvals/${approval.id}/decision`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ approve }),
+        });
+        const data = await response.json();
+        if (data.status !== "ok") {
+          error.textContent = data.detail || "Не получилось сохранить решение";
+          approveButton.disabled = false;
+          rejectButton.disabled = false;
+          return;
+        }
+        loadApprovals();
+      } catch (err) {
+        error.textContent = "Не удалось связаться с сервером";
+        approveButton.disabled = false;
+        rejectButton.disabled = false;
+      }
+    }
+
+    approveButton.addEventListener("click", () => decide(true));
+    rejectButton.addEventListener("click", () => decide(false));
+
+    return card;
+  }
+
   navButtons.teams.addEventListener("click", () => {
     setSection("teams");
     showTeamsListView();
@@ -436,6 +552,11 @@
   navButtons.reviews.addEventListener("click", () => {
     setSection("reviews");
     loadReviews();
+  });
+
+  navButtons.approvals.addEventListener("click", () => {
+    setSection("approvals");
+    loadApprovals();
   });
 
   logoutButton.addEventListener("click", async () => {
@@ -448,6 +569,7 @@
       headerNameEl.textContent = `${username} (${ROLE_LABELS[role] || role})`;
       appScreen.hidden = false;
       navButtons.reviews.hidden = role !== "operator";
+      navButtons.approvals.hidden = role !== "operator";
       setSection("teams");
       showTeamsListView();
     },

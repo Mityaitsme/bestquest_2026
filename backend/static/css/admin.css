@@ -101,3 +101,51 @@
 .review-card__action {
   flex: 1;
 }
+
+/* ---- Admin: dialogue-approval queue ---- */
+
+.approval-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.approval-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.approval-card__team {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.approval-card__meta {
+  margin-top: calc(var(--space-3) * -1);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.approval-card__text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.approval-card__text--muted {
+  color: var(--text-muted);
+}
+
+.approval-card__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.approval-card__action {
+  flex: 1;
+}
