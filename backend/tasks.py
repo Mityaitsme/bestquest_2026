@@ -55,6 +55,35 @@ def list_team_tasks(team_id: str) -> list[dict]:
     return result.data
 
 
+def list_team_graph(team_id: str) -> dict:
+    """Полный граф этапов + статус команды по каждому (включая locked) — для
+    второстепенного экрана 'граф прогресса' в админке (requirements.md
+    называет его необязательным 'вторым экраном', в основном для десктопа).
+    В отличие от list_team_tasks здесь нужны и locked-этапы тоже, иначе на
+    графе не будет видно, что вообще идёт дальше."""
+    client = get_supabase_client()
+
+    progress = (
+        client.table("team_stage_progress")
+        .select("stage_id, status, stages(title, completion_type)")
+        .eq("team_id", team_id)
+        .execute()
+        .data
+    )
+    edges = client.table("stage_edges").select("from_stage_id, to_stage_id").execute().data
+
+    stages = [
+        {
+            "stage_id": row["stage_id"],
+            "title": row["stages"]["title"] if row["stages"] else "Без названия",
+            "completion_type": row["stages"]["completion_type"] if row["stages"] else None,
+            "status": row["status"],
+        }
+        for row in progress
+    ]
+    return {"stages": stages, "edges": edges}
+
+
 def list_teams_overview() -> list[dict]:
     """Для первой вкладки админки: все команды с % пройденных этапов и
     временем последней выполненной задачи. Команды, которые дольше всего

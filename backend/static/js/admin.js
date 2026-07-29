@@ -100,7 +100,9 @@
       teamSections[key].hidden = key !== section;
       teamSectionButtons[key].setAttribute("aria-selected", String(key === section));
     }
-    if (section === "chats") {
+    if (section === "tasks") {
+      showTeamTasksListView();
+    } else if (section === "chats") {
       showTeamChatListView();
     }
   }
@@ -336,6 +338,163 @@
   }
 
   backButton.addEventListener("click", showTeamsListView);
+
+  // ---- Team graph: secondary, desktop-oriented view of the full stage graph ----
+  // (requirements.md calls this optional — "второй, не основной экран")
+
+  const STATUS_LABELS = { locked: "заблокировано", available: "доступно", completed: "выполнено" };
+  const GRAPH_NODE_WIDTH = 170;
+  const GRAPH_NODE_HEIGHT = 56;
+  const GRAPH_COL_GAP = 24;
+  const GRAPH_ROW_GAP = 56;
+  const GRAPH_PADDING = 20;
+  const SVG_NS = "http://www.w3.org/2000/svg";
+
+  const teamTasksListView = document.getElementById("admin-team-tasks-list-view");
+  const teamGraphView = document.getElementById("admin-team-graph-view");
+  const graphOpenButton = document.getElementById("admin-graph-open-button");
+  const graphBackButton = document.getElementById("admin-graph-back-button");
+  const graphEmptyEl = document.getElementById("admin-team-graph-empty");
+  const graphSvgEl = document.getElementById("admin-team-graph");
+
+  function showTeamTasksListView() {
+    teamGraphView.hidden = true;
+    teamTasksListView.hidden = false;
+  }
+
+  function showTeamGraphView() {
+    teamTasksListView.hidden = true;
+    teamGraphView.hidden = false;
+    loadTeamGraph();
+  }
+
+  graphOpenButton.addEventListener("click", showTeamGraphView);
+  graphBackButton.addEventListener("click", showTeamTasksListView);
+
+  async function loadTeamGraph() {
+    if (!currentTeam) {
+      return;
+    }
+    graphEmptyEl.hidden = true;
+    graphSvgEl.innerHTML = "";
+    try {
+      const response = await fetch(`/admin/teams/${currentTeam.team_id}/graph`);
+      const data = await response.json();
+      if (data.status !== "ok") {
+        graphEmptyEl.hidden = false;
+        graphEmptyEl.textContent = "Не удалось загрузить граф";
+        return;
+      }
+      renderTeamGraph(data.stages, data.edges);
+    } catch (err) {
+      graphEmptyEl.hidden = false;
+      graphEmptyEl.textContent = "Не удалось загрузить граф";
+    }
+  }
+
+  function renderTeamGraph(stages, edges) {
+    if (stages.length === 0) {
+      graphEmptyEl.hidden = false;
+      graphEmptyEl.textContent = "У команды пока нет ни одного этапа";
+      return;
+    }
+
+    const incoming = new Map(stages.map((s) => [s.stage_id, []]));
+    for (const edge of edges) {
+      if (incoming.has(edge.to_stage_id) && incoming.has(edge.from_stage_id)) {
+        incoming.get(edge.to_stage_id).push(edge.from_stage_id);
+      }
+    }
+
+    const levels = new Map();
+    function levelOf(stageId, seen) {
+      if (levels.has(stageId)) {
+        return levels.get(stageId);
+      }
+      if (seen.has(stageId)) {
+        return 0; // защита от цикла в данных — на такое граф не рассчитан
+      }
+      seen.add(stageId);
+      const prereqs = incoming.get(stageId) || [];
+      const level = prereqs.length === 0 ? 0 : 1 + Math.max(...prereqs.map((p) => levelOf(p, seen)));
+      levels.set(stageId, level);
+      return level;
+    }
+    for (const stage of stages) {
+      levelOf(stage.stage_id, new Set());
+    }
+
+    const rows = [];
+    for (const stage of stages) {
+      const level = levels.get(stage.stage_id);
+      rows[level] = rows[level] || [];
+      rows[level].push(stage);
+    }
+
+    const rowWidths = rows.map((row) => row.length * (GRAPH_NODE_WIDTH + GRAPH_COL_GAP) - GRAPH_COL_GAP);
+    const canvasWidth = Math.max(...rowWidths) + GRAPH_PADDING * 2;
+    const canvasHeight =
+      rows.length * (GRAPH_NODE_HEIGHT + GRAPH_ROW_GAP) - GRAPH_ROW_GAP + GRAPH_PADDING * 2;
+
+    const positions = new Map();
+    rows.forEach((row, level) => {
+      const rowWidth = rowWidths[level];
+      const xOffset = GRAPH_PADDING + (canvasWidth - GRAPH_PADDING * 2 - rowWidth) / 2;
+      const y = GRAPH_PADDING + level * (GRAPH_NODE_HEIGHT + GRAPH_ROW_GAP);
+      row.forEach((stage, index) => {
+        const x = xOffset + index * (GRAPH_NODE_WIDTH + GRAPH_COL_GAP);
+        positions.set(stage.stage_id, { x, y });
+      });
+    });
+
+    graphSvgEl.setAttribute("viewBox", `0 0 ${canvasWidth} ${canvasHeight}`);
+    graphSvgEl.setAttribute("width", canvasWidth);
+    graphSvgEl.setAttribute("height", canvasHeight);
+
+    for (const edge of edges) {
+      const from = positions.get(edge.from_stage_id);
+      const to = positions.get(edge.to_stage_id);
+      if (!from || !to) {
+        continue;
+      }
+      const line = document.createElementNS(SVG_NS, "line");
+      line.setAttribute("class", "admin-graph__edge");
+      line.setAttribute("x1", from.x + GRAPH_NODE_WIDTH / 2);
+      line.setAttribute("y1", from.y + GRAPH_NODE_HEIGHT);
+      line.setAttribute("x2", to.x + GRAPH_NODE_WIDTH / 2);
+      line.setAttribute("y2", to.y);
+      graphSvgEl.appendChild(line);
+    }
+
+    for (const stage of stages) {
+      const pos = positions.get(stage.stage_id);
+      const group = document.createElementNS(SVG_NS, "g");
+      group.setAttribute("class", `admin-graph__node admin-graph__node--${stage.status}`);
+
+      const rect = document.createElementNS(SVG_NS, "rect");
+      rect.setAttribute("x", pos.x);
+      rect.setAttribute("y", pos.y);
+      rect.setAttribute("width", GRAPH_NODE_WIDTH);
+      rect.setAttribute("height", GRAPH_NODE_HEIGHT);
+      rect.setAttribute("rx", 10);
+      group.appendChild(rect);
+
+      const title = document.createElementNS(SVG_NS, "title");
+      title.textContent = `${stage.title} — ${STATUS_LABELS[stage.status] || stage.status}`;
+      group.appendChild(title);
+
+      const text = document.createElementNS(SVG_NS, "text");
+      text.setAttribute("x", pos.x + GRAPH_NODE_WIDTH / 2);
+      text.setAttribute("y", pos.y + GRAPH_NODE_HEIGHT / 2);
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("dominant-baseline", "middle");
+      const label = stage.title.length > 20 ? `${stage.title.slice(0, 19)}…` : stage.title;
+      text.textContent = label;
+      group.appendChild(text);
+
+      graphSvgEl.appendChild(group);
+    }
+  }
 
   // ---- Team chats: chat list + thread + mode switch (operator only) ----
 

@@ -44,6 +44,7 @@ from supabase_client import get_supabase_client
 from tasks import (
     TaskError,
     complete_checkbox_stage,
+    list_team_graph,
     list_team_tasks,
     list_teams_overview,
     mark_stage_completed,
@@ -218,6 +219,12 @@ def create_app() -> Flask:
         if session.get("identity") != "admin":
             return jsonify(status="error", detail="Требуется вход как админ"), 401
         return jsonify(status="ok", tasks=list_team_tasks(team_id))
+
+    @app.get("/admin/teams/<team_id>/graph")
+    def admin_get_team_graph(team_id: str) -> ResponseReturnValue:
+        if session.get("identity") != "admin":
+            return jsonify(status="error", detail="Требуется вход как админ"), 401
+        return jsonify(status="ok", **list_team_graph(team_id))
 
     @app.post("/admin/teams/<team_id>/stages/<stage_id>/complete")
     def admin_complete_stage(team_id: str, stage_id: str) -> ResponseReturnValue:

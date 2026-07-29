@@ -163,6 +163,70 @@
   gap: var(--space-4);
 }
 
+#admin-team-tasks-list-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ---- Admin: team-progress graph (secondary, desktop-oriented view) ---- */
+
+.admin-graph-open-button,
+.admin-graph-back-button {
+  align-self: flex-start;
+}
+
+.admin-graph-back-button {
+  margin-bottom: var(--space-4);
+}
+
+.admin-graph-scroll {
+  overflow: auto;
+  max-height: 70vh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.admin-graph {
+  display: block;
+}
+
+.admin-graph__edge {
+  stroke: var(--border);
+  stroke-width: 2;
+}
+
+.admin-graph__node rect {
+  fill: var(--surface-alt);
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.admin-graph__node text {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.admin-graph__node--available rect {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.admin-graph__node--completed rect {
+  stroke: var(--success);
+  fill: rgba(79, 214, 122, 0.12);
+}
+
+.admin-graph__node--locked rect {
+  opacity: 0.55;
+}
+
+.admin-graph__node--locked text {
+  fill: var(--text-muted);
+}
+
 /* ---- Admin: operator chat (per-team, per-character/support) ---- */
 
 #admin-team-chat-list-view {

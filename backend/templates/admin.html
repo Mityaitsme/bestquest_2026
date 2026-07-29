@@ -56,12 +56,23 @@
           </div>
 
           <div id="admin-team-tasks-section">
-            <div class="segmented" role="tablist">
-              <button type="button" class="segmented__btn" id="admin-tasks-view-available" role="tab" aria-selected="true">Актуальные</button>
-              <button type="button" class="segmented__btn" id="admin-tasks-view-completed" role="tab" aria-selected="false">Выполненные</button>
+            <div id="admin-team-tasks-list-view">
+              <div class="segmented" role="tablist">
+                <button type="button" class="segmented__btn" id="admin-tasks-view-available" role="tab" aria-selected="true">Актуальные</button>
+                <button type="button" class="segmented__btn" id="admin-tasks-view-completed" role="tab" aria-selected="false">Выполненные</button>
+              </div>
+              <div id="admin-task-list" class="task-list"></div>
+              <p id="admin-task-empty" class="empty-state" hidden></p>
+              <button type="button" id="admin-graph-open-button" class="btn-secondary admin-graph-open-button">Показать как граф</button>
             </div>
-            <div id="admin-task-list" class="task-list"></div>
-            <p id="admin-task-empty" class="empty-state" hidden></p>
+
+            <div id="admin-team-graph-view" hidden>
+              <button type="button" id="admin-graph-back-button" class="btn-secondary admin-graph-back-button">&#8592; К списку</button>
+              <div id="admin-team-graph-empty" class="empty-state" hidden></div>
+              <div id="admin-team-graph-scroll" class="admin-graph-scroll">
+                <svg id="admin-team-graph" class="admin-graph"></svg>
+              </div>
+            </div>
           </div>
 
           <div id="admin-team-chats-section" hidden>
