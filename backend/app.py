@@ -72,6 +72,10 @@ def create_app() -> Flask:
     def index() -> ResponseReturnValue:
         return render_template("index.html")
 
+    @app.get("/admin")
+    def admin_index() -> ResponseReturnValue:
+        return render_template("admin.html")
+
     @app.get("/health")
     def health() -> ResponseReturnValue:
         return jsonify(status="ok")
@@ -160,6 +164,7 @@ def create_app() -> Flask:
         session.permanent = True
         session["identity"] = "admin"
         session["admin_id"] = admin_session.admin_id
+        session["admin_username"] = admin_session.username
         session["role"] = admin_session.role
 
         return jsonify(
@@ -186,6 +191,7 @@ def create_app() -> Flask:
                 status="ok",
                 identity="admin",
                 admin_id=session.get("admin_id"),
+                username=session.get("admin_username"),
                 role=session.get("role"),
             )
         return jsonify(status="ok", identity=None)

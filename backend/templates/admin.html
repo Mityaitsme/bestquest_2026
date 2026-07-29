@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Квест — админка{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+{% endblock %}
+
+{% block content %}
+<main id="admin-root">
+  <section id="admin-auth-screen" class="auth-screen fade-swap" hidden>
+    <div class="auth-brand">
+      <div class="auth-brand__mark" aria-hidden="true">&#128274;</div>
+      <div class="auth-brand__title">Квест — админка</div>
+      <div class="auth-brand__subtitle">Войдите как оператор или актёр</div>
+    </div>
+
+    <div class="auth-card">
+      <form id="admin-auth-form" class="auth-form" autocomplete="off">
+        <div class="field">
+          <label for="admin-username">Логин</label>
+          <input type="text" id="admin-username" name="username" required autocomplete="username">
+        </div>
+        <div class="field">
+          <label for="admin-password">Пароль</label>
+          <input type="password" id="admin-password" name="password" required autocomplete="current-password">
+        </div>
+        <p class="form-error" id="admin-auth-error" role="alert"></p>
+        <button type="submit" class="btn-primary" id="admin-auth-submit">Войти</button>
+      </form>
+    </div>
+  </section>
+
+  <section id="admin-app-screen" class="app-screen fade-swap" hidden>
+    <header class="app-header">
+      <span class="app-header__team" id="admin-header-name"></span>
+      <button type="button" class="app-header__logout" id="admin-logout-button" aria-label="Выйти">&#10162;</button>
+    </header>
+
+    <main class="app-content">
+      <section id="admin-panel-teams" class="panel">
+        <div id="admin-team-list" class="team-list"></div>
+        <p id="admin-team-list-empty" class="empty-state" hidden></p>
+      </section>
+
+      <section id="admin-panel-team-detail" class="panel" hidden>
+        <div class="chat-detail__header">
+          <button type="button" id="admin-team-back-button" class="chat-detail__back" aria-label="Назад">&#8592;</button>
+          <span id="admin-team-detail-title" class="chat-detail__title"></span>
+        </div>
+
+        <div class="segmented" role="tablist">
+          <button type="button" class="segmented__btn" id="admin-tasks-view-available" role="tab" aria-selected="true">Актуальные</button>
+          <button type="button" class="segmented__btn" id="admin-tasks-view-completed" role="tab" aria-selected="false">Выполненные</button>
+        </div>
+        <div id="admin-task-list" class="task-list"></div>
+        <p id="admin-task-empty" class="empty-state" hidden></p>
+      </section>
+    </main>
+  </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+<script src="{{ url_for('static', filename='js/admin-auth.js') }}"></script>
+{% endblock %}
