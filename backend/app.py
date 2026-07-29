@@ -9,6 +9,7 @@ from flask.typing import ResponseReturnValue
 
 from answers import AnswerError, get_stage_fields, submit_field_answer
 from auth import AuthError, login_admin, login_team, register_team
+from calls import CallError, dial_number, submit_phase_password
 from chat import (
     ChatError,
     list_messages,
@@ -384,6 +385,35 @@ def create_app() -> Flask:
             return jsonify(status="error", detail=str(exc)), 400
 
         return jsonify(status="ok")
+
+    @app.post("/calls/dial")
+    def calls_dial() -> ResponseReturnValue:
+        if session.get("identity") != "team":
+            return jsonify(status="error", detail="Требуется вход как команда"), 401
+
+        data = request.get_json(silent=True) or {}
+        number = str(data.get("number", "")).strip()
+        if not number:
+            return jsonify(status="error", detail="Укажите номер"), 400
+
+        return jsonify(status="ok", **dial_number(session["team_id"], number))
+
+    @app.post("/calls/phases/<phase_id>/password")
+    def calls_submit_password(phase_id: str) -> ResponseReturnValue:
+        if session.get("identity") != "team":
+            return jsonify(status="error", detail="Требуется вход как команда"), 401
+
+        data = request.get_json(silent=True) or {}
+        password = str(data.get("password", ""))
+        if not password:
+            return jsonify(status="error", detail="Пустой пароль"), 400
+
+        try:
+            result = submit_phase_password(session["team_id"], phase_id, password)
+        except CallError as exc:
+            return jsonify(status="error", detail=str(exc)), 400
+
+        return jsonify(status="ok", **result)
 
     return app
 

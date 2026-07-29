@@ -67,3 +67,30 @@ stages:
     description: "Сфотографируйте то, что нашли, и отправьте на проверку."
     completion_type: manual_review
     requires: [confirm_ready]
+
+# Телефонные номера (phone_numbers):
+#   number         — строка цифр, как её наберёт команда
+#   character_slug — необязательно, привязка номера к персонажу
+#   phases         — фазы звонка:
+#     key               — локальный id фазы внутри этого номера
+#     entry: true        — ровно одна такая фаза на номер, с неё начинается звонок
+#     audio             — путь/id аудио, которое проигрывается на этой фазе
+#     requires_password — есть ли на этой фазе ввод пароля
+#     password          — правильный пароль (только если requires_password)
+#     on_success/on_failure — key следующей фазы после верного/неверного пароля;
+#                              не указан = звонок сбрасывается после этой фазы
+phone_numbers:
+  - number: "89998887766"
+    character_slug: curator
+    phases:
+      - key: entry
+        entry: true
+        audio: "calls/curator_intro.mp3"
+        requires_password: true
+        password: "полночь"
+        on_success: success
+        on_failure: failure
+      - key: success
+        audio: "calls/curator_success.mp3"
+      - key: failure
+        audio: "calls/curator_failure.mp3"

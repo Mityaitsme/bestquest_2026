@@ -1,13 +1,15 @@
-"""Загрузчик игрового контента из YAML в Supabase (персонажи, этапы, граф, поля ответа).
+"""Загрузчик игрового контента из YAML в Supabase
+(персонажи, этапы, граф, поля ответа, телефонные номера/звонки).
 
 Запуск (из папки backend, с активированным venv):
     python import_content.py [путь_к_файлу]
 По умолчанию читает ../data/quest_content.yaml.
 
-Идемпотентно: персонажи и этапы обновляются по slug, поля — по
-(stage, field_key), принятые ответы поля полностью пересоздаются из файла
-при каждом запуске. НИЧЕГО не удаляется автоматически: если убрать этап
-или персонажа из YAML, в базе он останется (у команд может быть
+Идемпотентно: персонажи/этапы/номера обновляются по slug/number, поля — по
+(stage, field_key), фазы звонка — по (номер, content_key). Принятые ответы
+поля и связи success/failure фаз полностью пересоздаются из файла при
+каждом запуске. НИЧЕГО не удаляется автоматически: если убрать этап,
+персонажа или номер из YAML, в базе он останется (у команд может быть
 привязанный прогресс/чаты) — в конце скрипт только предупредит о таких
 "осиротевших" записях.
 """
@@ -97,25 +99,78 @@ def validate_stages(stages: list[dict[str, Any]]) -> None:
                 raise ContentError(f"Этап '{slug}' требует неизвестный этап '{prerequisite}'")
 
 
+def validate_phone_numbers(phone_numbers: list[dict[str, Any]]) -> None:
+    seen_numbers: set[str] = set()
+
+    for phone in phone_numbers:
+        number = phone.get("number")
+        if not number:
+            raise ContentError(f"У номера нет number: {phone}")
+        if number in seen_numbers:
+            raise ContentError(f"Повторяющийся номер: {number}")
+        seen_numbers.add(number)
+
+        phases = phone.get("phases", [])
+        if not phases:
+            raise ContentError(f"Номер '{number}': нет ни одной фазы (phases)")
+
+        phase_keys = {phase.get("key") for phase in phases}
+        entry_count = 0
+        for phase in phases:
+            key = phase.get("key")
+            if not key:
+                raise ContentError(f"Номер '{number}': у фазы нет key: {phase}")
+            if not phase.get("audio"):
+                raise ContentError(f"Номер '{number}', фаза '{key}': нет audio")
+            if phase.get("entry"):
+                entry_count += 1
+            if phase.get("requires_password") and not phase.get("password"):
+                raise ContentError(
+                    f"Номер '{number}', фаза '{key}': requires_password=true, но нет password"
+                )
+            for link_field in ("on_success", "on_failure"):
+                target = phase.get(link_field)
+                if target and target not in phase_keys:
+                    raise ContentError(
+                        f"Номер '{number}', фаза '{key}': {link_field} ссылается "
+                        f"на неизвестную фазу '{target}'"
+                    )
+
+        if entry_count != 1:
+            raise ContentError(
+                f"Номер '{number}': должна быть ровно одна входная фаза (entry: true), "
+                f"сейчас {entry_count}"
+            )
+
+
 def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
     data = load_content(path)
     characters = data.get("characters", [])
     stages = data.get("stages", [])
+    phone_numbers = data.get("phone_numbers", [])
     validate_characters(characters)
     validate_stages(stages)
+    validate_phone_numbers(phone_numbers)
 
     client = get_supabase_client()
 
+    character_slug_to_id: dict[str, str] = {}
     for character in characters:
-        client.table("characters").upsert(
-            {
-                "slug": character["slug"],
-                "name": character["name"],
-                "nickname": character["nickname"],
-                "public_lore": character.get("public_lore", ""),
-            },
-            on_conflict="slug",
-        ).execute()
+        row = (
+            client.table("characters")
+            .upsert(
+                {
+                    "slug": character["slug"],
+                    "name": character["name"],
+                    "nickname": character["nickname"],
+                    "public_lore": character.get("public_lore", ""),
+                },
+                on_conflict="slug",
+            )
+            .execute()
+            .data[0]
+        )
+        character_slug_to_id[character["slug"]] = row["id"]
         print(f"персонаж: {character['slug']}")
 
     slug_to_id: dict[str, str] = {}
@@ -172,6 +227,58 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
                 [{"field_id": field_id, "value": value} for value in field["accepted"]]
             ).execute()
 
+    for phone in phone_numbers:
+        character_slug = phone.get("character_slug")
+        phone_row = (
+            client.table("phone_numbers")
+            .upsert(
+                {
+                    "number": phone["number"],
+                    "character_id": character_slug_to_id.get(character_slug)
+                    if character_slug
+                    else None,
+                },
+                on_conflict="number",
+            )
+            .execute()
+            .data[0]
+        )
+        phone_number_id = phone_row["id"]
+
+        # Первый проход: создать/обновить фазы без ссылок на "следующую" фазу
+        # (её id мы ещё не знаем для только что создаваемых фаз).
+        key_to_phase_id: dict[str, str] = {}
+        for phase in phone["phases"]:
+            phase_row = (
+                client.table("call_phases")
+                .upsert(
+                    {
+                        "phone_number_id": phone_number_id,
+                        "content_key": phase["key"],
+                        "is_entry": phase.get("entry", False),
+                        "audio_url": phase["audio"],
+                        "requires_password": phase.get("requires_password", False),
+                        "correct_password": phase.get("password"),
+                    },
+                    on_conflict="phone_number_id,content_key",
+                )
+                .execute()
+                .data[0]
+            )
+            key_to_phase_id[phase["key"]] = phase_row["id"]
+
+        # Второй проход: проставить success_next/failure_next теперь,
+        # когда все фазы этого номера уже существуют.
+        for phase in phone["phases"]:
+            client.table("call_phases").update(
+                {
+                    "success_next_phase_id": key_to_phase_id.get(phase.get("on_success")),
+                    "failure_next_phase_id": key_to_phase_id.get(phase.get("on_failure")),
+                }
+            ).eq("id", key_to_phase_id[phase["key"]]).execute()
+
+        print(f"номер: {phone['number']} ({len(phone['phases'])} фаз)")
+
     db_stage_slugs = {row["slug"] for row in client.table("stages").select("slug").execute().data}
     missing_stages = db_stage_slugs - {stage["slug"] for stage in stages}
     if missing_stages:
@@ -190,7 +297,20 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
             f"(не удалены, проверьте сами): {sorted(missing_characters)}"
         )
 
-    print(f"\nГотово: {len(characters)} персонажей, {len(stages)} этапов обработано.")
+    db_numbers = {
+        row["number"] for row in client.table("phone_numbers").select("number").execute().data
+    }
+    missing_numbers = db_numbers - {p["number"] for p in phone_numbers}
+    if missing_numbers:
+        print(
+            f"\nПРЕДУПРЕЖДЕНИЕ: в базе есть номера, которых нет в файле "
+            f"(не удалены, проверьте сами): {sorted(missing_numbers)}"
+        )
+
+    print(
+        f"\nГотово: {len(characters)} персонажей, {len(stages)} этапов, "
+        f"{len(phone_numbers)} номеров обработано."
+    )
 
 
 if __name__ == "__main__":
