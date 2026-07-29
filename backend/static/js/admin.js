@@ -17,9 +17,39 @@
   const headerNameEl = document.getElementById("admin-header-name");
   const logoutButton = document.getElementById("admin-logout-button");
 
-  const panelTeams = document.getElementById("admin-panel-teams");
-  const panelDetail = document.getElementById("admin-panel-team-detail");
+  const navButtons = {
+    teams: document.getElementById("admin-tab-teams"),
+    reviews: document.getElementById("admin-tab-reviews"),
+  };
+  const sections = {
+    teams: document.getElementById("admin-panel-teams"),
+    reviews: document.getElementById("admin-panel-reviews"),
+  };
 
+  function setSection(section) {
+    for (const key of Object.keys(sections)) {
+      sections[key].hidden = key !== section;
+      navButtons[key].setAttribute("aria-selected", String(key === section));
+    }
+  }
+
+  function formatDateTime(iso) {
+    if (!iso) {
+      return "ещё нет активности";
+    }
+    const date = new Date(iso);
+    return date.toLocaleString("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  // ---- Teams: list + team detail (task list, actor mark-complete) ----
+
+  const teamsListView = document.getElementById("admin-teams-list-view");
+  const teamDetailView = document.getElementById("admin-team-detail-view");
   const teamListEl = document.getElementById("admin-team-list");
   const teamListEmptyEl = document.getElementById("admin-team-list-empty");
 
@@ -38,23 +68,10 @@
   let taskView = "available";
   let tasksRequestId = 0;
 
-  function formatLastActivity(iso) {
-    if (!iso) {
-      return "ещё нет активности";
-    }
-    const date = new Date(iso);
-    return date.toLocaleString("ru-RU", {
-      day: "2-digit",
-      month: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-
-  function showTeamsPanel() {
+  function showTeamsListView() {
     currentTeam = null;
-    panelDetail.hidden = true;
-    panelTeams.hidden = false;
+    teamDetailView.hidden = true;
+    teamsListView.hidden = false;
     loadTeams();
   }
 
@@ -105,7 +122,7 @@
 
       const meta = document.createElement("div");
       meta.className = "team-list-item__meta";
-      meta.textContent = `Последняя активность: ${formatLastActivity(team.last_task_completed_at)}`;
+      meta.textContent = `Последняя активность: ${formatDateTime(team.last_task_completed_at)}`;
       item.appendChild(meta);
 
       item.addEventListener("click", () => openTeam(team));
@@ -116,8 +133,8 @@
   function openTeam(team) {
     currentTeam = team;
     detailTitleEl.textContent = team.name;
-    panelTeams.hidden = true;
-    panelDetail.hidden = false;
+    teamsListView.hidden = true;
+    teamDetailView.hidden = false;
     setTaskView("available");
   }
 
@@ -249,7 +266,177 @@
     return wrap;
   }
 
-  backButton.addEventListener("click", showTeamsPanel);
+  backButton.addEventListener("click", showTeamsListView);
+
+  // ---- Reviews: manual-review queue (operator only) ----
+
+  const reviewListEl = document.getElementById("admin-review-list");
+  const reviewListEmptyEl = document.getElementById("admin-review-list-empty");
+
+  async function loadReviews() {
+    try {
+      const response = await fetch("/admin/reviews");
+      const data = await response.json();
+      if (data.status !== "ok") {
+        reviewListEmptyEl.hidden = false;
+        reviewListEmptyEl.textContent = "Не удалось загрузить заявки";
+        return;
+      }
+      renderReviews(data.reviews);
+    } catch (err) {
+      reviewListEmptyEl.hidden = false;
+      reviewListEmptyEl.textContent = "Не удалось загрузить заявки";
+    }
+  }
+
+  function renderReviews(reviews) {
+    reviewListEl.innerHTML = "";
+
+    if (reviews.length === 0) {
+      reviewListEmptyEl.hidden = false;
+      reviewListEmptyEl.textContent = "Заявок на проверку нет";
+      return;
+    }
+    reviewListEmptyEl.hidden = true;
+
+    for (const review of reviews) {
+      reviewListEl.appendChild(buildReviewCard(review));
+    }
+  }
+
+  function buildReviewCard(review) {
+    const card = document.createElement("div");
+    card.className = "review-card";
+
+    const team = document.createElement("div");
+    team.className = "review-card__team";
+    team.textContent = review.teams ? review.teams.name : "Команда";
+    card.appendChild(team);
+
+    const meta = document.createElement("div");
+    meta.className = "review-card__meta";
+    const stageTitle = review.stages ? review.stages.title : "";
+    meta.textContent = `${stageTitle} · ${formatDateTime(review.created_at)}`;
+    card.appendChild(meta);
+
+    if (review.submitted_text) {
+      const text = document.createElement("p");
+      text.className = "review-card__text";
+      text.textContent = review.submitted_text;
+      card.appendChild(text);
+    }
+
+    if (review.photo_path) {
+      card.appendChild(buildPhotoToggle(review));
+    }
+
+    const commentInput = document.createElement("textarea");
+    commentInput.className = "task-review__textarea review-card__comment";
+    commentInput.rows = 2;
+    commentInput.placeholder = "Комментарий (необязательно)";
+    card.appendChild(commentInput);
+
+    const actions = document.createElement("div");
+    actions.className = "review-card__actions";
+
+    const acceptButton = document.createElement("button");
+    acceptButton.type = "button";
+    acceptButton.className = "btn-primary review-card__action";
+    acceptButton.textContent = "Принять";
+    actions.appendChild(acceptButton);
+
+    const rejectButton = document.createElement("button");
+    rejectButton.type = "button";
+    rejectButton.className = "btn-secondary review-card__action";
+    rejectButton.textContent = "Отклонить";
+    actions.appendChild(rejectButton);
+
+    card.appendChild(actions);
+
+    const error = document.createElement("p");
+    error.className = "form-error";
+    card.appendChild(error);
+
+    async function decide(accept) {
+      acceptButton.disabled = true;
+      rejectButton.disabled = true;
+      error.textContent = "";
+      try {
+        const response = await fetch(`/admin/reviews/${review.id}/decision`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accept, comment: commentInput.value.trim() || null }),
+        });
+        const data = await response.json();
+        if (data.status !== "ok") {
+          error.textContent = data.detail || "Не получилось сохранить решение";
+          acceptButton.disabled = false;
+          rejectButton.disabled = false;
+          return;
+        }
+        loadReviews();
+      } catch (err) {
+        error.textContent = "Не удалось связаться с сервером";
+        acceptButton.disabled = false;
+        rejectButton.disabled = false;
+      }
+    }
+
+    acceptButton.addEventListener("click", () => decide(true));
+    rejectButton.addEventListener("click", () => decide(false));
+
+    return card;
+  }
+
+  function buildPhotoToggle(review) {
+    const wrap = document.createElement("div");
+    wrap.className = "review-card__photo-wrap";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn-secondary review-card__photo-button";
+    button.textContent = "Показать фото";
+    wrap.appendChild(button);
+
+    const img = document.createElement("img");
+    img.className = "review-card__photo";
+    img.hidden = true;
+    img.alt = "Фото заявки";
+    wrap.appendChild(img);
+
+    button.addEventListener("click", async () => {
+      if (!img.hidden) {
+        img.hidden = true;
+        button.textContent = "Показать фото";
+        return;
+      }
+
+      button.disabled = true;
+      try {
+        const response = await fetch(`/admin/reviews/${review.id}/photo-url`);
+        const data = await response.json();
+        if (data.status === "ok") {
+          img.src = data.url;
+          img.hidden = false;
+          button.textContent = "Скрыть фото";
+        }
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    return wrap;
+  }
+
+  navButtons.teams.addEventListener("click", () => {
+    setSection("teams");
+    showTeamsListView();
+  });
+
+  navButtons.reviews.addEventListener("click", () => {
+    setSection("reviews");
+    loadReviews();
+  });
 
   logoutButton.addEventListener("click", async () => {
     await fetch("/auth/logout", { method: "POST" });
@@ -260,7 +447,9 @@
     show(username, role) {
       headerNameEl.textContent = `${username} (${ROLE_LABELS[role] || role})`;
       appScreen.hidden = false;
-      showTeamsPanel();
+      navButtons.reviews.hidden = role !== "operator";
+      setSection("teams");
+      showTeamsListView();
     },
   };
 })();
