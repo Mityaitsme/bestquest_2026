@@ -32,16 +32,50 @@
     </div>
   </section>
 
-  <section id="welcome-screen" class="welcome-screen fade-swap" hidden>
-    <div class="welcome-screen__team" id="welcome-team-name"></div>
-    <p class="welcome-screen__hint">
-      Основной экран задач, чата и звонков появится на следующих этапах.
-    </p>
-    <button type="button" class="btn-secondary" id="logout-button">Выйти</button>
+  <section id="app-screen" class="app-screen fade-swap" hidden>
+    <header class="app-header">
+      <span class="app-header__team" id="app-team-name"></span>
+      <button type="button" class="app-header__logout" id="logout-button" aria-label="Выйти">&#10162;</button>
+    </header>
+
+    <main class="app-content">
+      <section id="panel-tasks" class="panel">
+        <div class="segmented" role="tablist">
+          <button type="button" class="segmented__btn" id="tasks-view-available" role="tab" aria-selected="true">Актуальные</button>
+          <button type="button" class="segmented__btn" id="tasks-view-completed" role="tab" aria-selected="false">Выполненные</button>
+        </div>
+        <div id="task-list" class="task-list"></div>
+        <p id="task-empty" class="empty-state" hidden></p>
+      </section>
+
+      <section id="panel-chat" class="panel" hidden>
+        <p class="empty-state">Чат появится на одном из следующих этапов.</p>
+      </section>
+
+      <section id="panel-calls" class="panel" hidden>
+        <p class="empty-state">Звонки появятся на одном из следующих этапов.</p>
+      </section>
+    </main>
+
+    <nav class="bottom-nav">
+      <button type="button" class="bottom-nav__btn" id="tab-tasks" aria-selected="true">
+        <span class="bottom-nav__icon" aria-hidden="true">&#9989;</span>
+        <span>Задачи</span>
+      </button>
+      <button type="button" class="bottom-nav__btn" id="tab-chat" aria-selected="false">
+        <span class="bottom-nav__icon" aria-hidden="true">&#128172;</span>
+        <span>Чат</span>
+      </button>
+      <button type="button" class="bottom-nav__btn" id="tab-calls" aria-selected="false">
+        <span class="bottom-nav__icon" aria-hidden="true">&#128222;</span>
+        <span>Звонки</span>
+      </button>
+    </nav>
   </section>
 </main>
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
 <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
 {% endblock %}

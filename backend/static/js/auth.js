@@ -2,9 +2,6 @@
   "use strict";
 
   const authScreen = document.getElementById("auth-screen");
-  const welcomeScreen = document.getElementById("welcome-screen");
-  const welcomeTeamName = document.getElementById("welcome-team-name");
-  const logoutButton = document.getElementById("logout-button");
 
   const tabLogin = document.getElementById("tab-login");
   const tabRegister = document.getElementById("tab-register");
@@ -14,15 +11,12 @@
 
   let mode = "login";
 
-  function showScreen(screen) {
-    for (const el of [authScreen, welcomeScreen]) {
-      el.hidden = el !== screen;
-    }
+  function showAuthScreen() {
+    authScreen.hidden = false;
   }
 
-  function showWelcome(teamName) {
-    welcomeTeamName.textContent = teamName || "";
-    showScreen(welcomeScreen);
+  function hideAuthScreen() {
+    authScreen.hidden = true;
   }
 
   function setMode(newMode) {
@@ -58,7 +52,8 @@
         return;
       }
 
-      showWelcome(data.name);
+      hideAuthScreen();
+      window.QuestApp.show(data.name);
     } catch (err) {
       errorEl.textContent = "Не удалось связаться с сервером";
     } finally {
@@ -66,26 +61,19 @@
     }
   });
 
-  logoutButton.addEventListener("click", async () => {
-    await fetch("/auth/logout", { method: "POST" });
-    setMode("login");
-    form.reset();
-    showScreen(authScreen);
-  });
-
   async function init() {
     try {
       const response = await fetch("/auth/me");
       const data = await response.json();
       if (data.identity === "team") {
-        showWelcome(data.name);
+        window.QuestApp.show(data.name);
         return;
       }
     } catch (err) {
       // сервер недоступен — просто показываем экран входа
     }
     setMode("login");
-    showScreen(authScreen);
+    showAuthScreen();
   }
 
   init();
