@@ -150,19 +150,9 @@
   flex: 1;
 }
 
-/* ---- Admin: team detail — tasks/chats section switch ---- */
+/* ---- Admin: team detail (tasks + graph, chats moved to their own tabs) ---- */
 
-#admin-team-section-switch {
-  margin-bottom: var(--space-4);
-}
-
-#admin-team-tasks-section,
-#admin-team-chats-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
+#admin-team-detail-view,
 #admin-team-tasks-list-view {
   display: flex;
   flex-direction: column;
@@ -227,12 +217,17 @@
   fill: var(--text-muted);
 }
 
-/* ---- Admin: operator chat (per-team, per-character/support) ---- */
+/* ---- Admin: Техподдержка / Диалоги — chat browsing across all teams ---- */
 
-#admin-team-chat-list-view {
+#admin-support-list-view,
+#admin-dialogues-list-view {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+.admin-persona-field {
+  margin-bottom: var(--space-1);
 }
 
 .admin-chat-mode-field {
@@ -256,7 +251,8 @@
   box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.25);
 }
 
-#admin-chat-mode-error {
+#admin-support-chat-mode-error,
+#admin-dialogues-chat-mode-error {
   margin-bottom: var(--space-3);
 }
 
@@ -269,4 +265,32 @@
 
 .task-action__confirm-button {
   flex: 1;
+}
+
+/* ---- Admin: persistent notification banners (reviews/dialogue approvals) ----
+   В отличие от тоста у команды это НЕ авто-скрывающееся уведомление — висит,
+   пока заявка не будет решена (см. removePendingBanner() в admin.js). */
+
+.admin-banner {
+  max-width: 360px;
+  width: 100%;
+  background: var(--surface-alt);
+  border: 1px solid var(--accent);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-3) var(--space-4);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(-12px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.admin-banner--visible {
+  opacity: 1;
+  transform: translateY(0);
 }

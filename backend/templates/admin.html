@@ -32,6 +32,8 @@
   </section>
 
   <section id="admin-app-screen" class="app-screen fade-swap" hidden>
+    <div id="admin-banner-container" class="toast-container" aria-live="assertive"></div>
+
     <header class="app-header">
       <span class="app-header__team" id="admin-header-name"></span>
       <button type="button" class="app-header__logout" id="admin-logout-button" aria-label="Выйти">&#10162;</button>
@@ -50,60 +52,88 @@
             <span id="admin-team-detail-title" class="chat-detail__title"></span>
           </div>
 
-          <div class="segmented" role="tablist" id="admin-team-section-switch">
-            <button type="button" class="segmented__btn" id="admin-team-section-tasks" role="tab" aria-selected="true">Задачи</button>
-            <button type="button" class="segmented__btn" id="admin-team-section-chats" role="tab" aria-selected="false">Чаты</button>
+          <div id="admin-team-tasks-list-view">
+            <div class="segmented" role="tablist">
+              <button type="button" class="segmented__btn" id="admin-tasks-view-available" role="tab" aria-selected="true">Актуальные</button>
+              <button type="button" class="segmented__btn" id="admin-tasks-view-completed" role="tab" aria-selected="false">Выполненные</button>
+            </div>
+            <div id="admin-task-list" class="task-list"></div>
+            <p id="admin-task-empty" class="empty-state" hidden></p>
+            <button type="button" id="admin-graph-open-button" class="btn-secondary admin-graph-open-button">Показать как граф</button>
           </div>
 
-          <div id="admin-team-tasks-section">
-            <div id="admin-team-tasks-list-view">
-              <div class="segmented" role="tablist">
-                <button type="button" class="segmented__btn" id="admin-tasks-view-available" role="tab" aria-selected="true">Актуальные</button>
-                <button type="button" class="segmented__btn" id="admin-tasks-view-completed" role="tab" aria-selected="false">Выполненные</button>
-              </div>
-              <div id="admin-task-list" class="task-list"></div>
-              <p id="admin-task-empty" class="empty-state" hidden></p>
-              <button type="button" id="admin-graph-open-button" class="btn-secondary admin-graph-open-button">Показать как граф</button>
-            </div>
-
-            <div id="admin-team-graph-view" hidden>
-              <button type="button" id="admin-graph-back-button" class="btn-secondary admin-graph-back-button">&#8592; К списку</button>
-              <div id="admin-team-graph-empty" class="empty-state" hidden></div>
-              <div id="admin-team-graph-scroll" class="admin-graph-scroll">
-                <svg id="admin-team-graph" class="admin-graph"></svg>
-              </div>
+          <div id="admin-team-graph-view" hidden>
+            <button type="button" id="admin-graph-back-button" class="btn-secondary admin-graph-back-button">&#8592; К списку</button>
+            <div id="admin-team-graph-empty" class="empty-state" hidden></div>
+            <div id="admin-team-graph-scroll" class="admin-graph-scroll">
+              <svg id="admin-team-graph" class="admin-graph"></svg>
             </div>
           </div>
+        </div>
+      </section>
 
-          <div id="admin-team-chats-section" hidden>
-            <div id="admin-team-chat-list-view">
-              <div id="admin-team-chat-list" class="chat-list"></div>
-              <p id="admin-team-chat-list-empty" class="empty-state" hidden></p>
-            </div>
+      <section id="admin-panel-support" class="panel" hidden>
+        <div id="admin-support-list-view">
+          <div id="admin-support-chat-list" class="chat-list"></div>
+          <p id="admin-support-list-empty" class="empty-state" hidden></p>
+        </div>
 
-            <div id="admin-team-chat-detail-view" class="chat-detail" hidden>
-              <div class="chat-detail__header">
-                <button type="button" id="admin-chat-back-button" class="chat-detail__back" aria-label="Назад">&#8592;</button>
-                <span id="admin-chat-detail-title" class="chat-detail__title"></span>
-              </div>
+        <div id="admin-support-chat-detail-view" class="chat-detail" hidden>
+          <div class="chat-detail__header">
+            <button type="button" id="admin-support-chat-back-button" class="chat-detail__back" aria-label="Назад">&#8592;</button>
+            <span id="admin-support-chat-detail-title" class="chat-detail__title"></span>
+          </div>
 
-              <div class="field admin-chat-mode-field">
-                <label for="admin-chat-mode-select">Режим чата</label>
-                <select id="admin-chat-mode-select" class="admin-chat-mode-select">
-                  <option value="scripted">Сценарий</option>
-                  <option value="operator">Оператор</option>
-                  <option value="gpt">GPT</option>
-                  <option value="muted">Тихо</option>
-                </select>
-              </div>
-              <p class="form-error" id="admin-chat-mode-error"></p>
+          <div class="field admin-chat-mode-field">
+            <label for="admin-support-chat-mode-select">Режим чата</label>
+            <select id="admin-support-chat-mode-select" class="admin-chat-mode-select">
+              <option value="scripted">Сценарий</option>
+              <option value="operator">Оператор</option>
+              <option value="gpt">GPT</option>
+              <option value="muted">Тихо</option>
+            </select>
+          </div>
+          <p class="form-error" id="admin-support-chat-mode-error"></p>
 
-              <div id="admin-chat-messages" class="chat-messages"></div>
-              <div id="admin-chat-input-row" class="chat-input-row" hidden>
-                <input type="text" id="admin-chat-input" class="chat-input" placeholder="Сообщение…" autocomplete="off">
-                <button type="button" id="admin-chat-send-button" class="chat-send-button" aria-label="Отправить">&#10148;</button>
-              </div>
-            </div>
+          <div id="admin-support-chat-messages" class="chat-messages"></div>
+          <div id="admin-support-chat-input-row" class="chat-input-row" hidden>
+            <input type="text" id="admin-support-chat-input" class="chat-input" placeholder="Сообщение…" autocomplete="off">
+            <button type="button" id="admin-support-chat-send-button" class="chat-send-button" aria-label="Отправить">&#10148;</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="admin-panel-dialogues" class="panel" hidden>
+        <div id="admin-dialogues-list-view">
+          <div class="field admin-persona-field">
+            <label for="admin-persona-select">Персонаж</label>
+            <select id="admin-persona-select" class="admin-chat-mode-select"></select>
+          </div>
+          <div id="admin-persona-chat-list" class="chat-list"></div>
+          <p id="admin-persona-list-empty" class="empty-state" hidden></p>
+        </div>
+
+        <div id="admin-dialogues-chat-detail-view" class="chat-detail" hidden>
+          <div class="chat-detail__header">
+            <button type="button" id="admin-dialogues-chat-back-button" class="chat-detail__back" aria-label="Назад">&#8592;</button>
+            <span id="admin-dialogues-chat-detail-title" class="chat-detail__title"></span>
+          </div>
+
+          <div class="field admin-chat-mode-field">
+            <label for="admin-dialogues-chat-mode-select">Режим чата</label>
+            <select id="admin-dialogues-chat-mode-select" class="admin-chat-mode-select">
+              <option value="scripted">Сценарий</option>
+              <option value="operator">Оператор</option>
+              <option value="gpt">GPT</option>
+              <option value="muted">Тихо</option>
+            </select>
+          </div>
+          <p class="form-error" id="admin-dialogues-chat-mode-error"></p>
+
+          <div id="admin-dialogues-chat-messages" class="chat-messages"></div>
+          <div id="admin-dialogues-chat-input-row" class="chat-input-row" hidden>
+            <input type="text" id="admin-dialogues-chat-input" class="chat-input" placeholder="Сообщение…" autocomplete="off">
+            <button type="button" id="admin-dialogues-chat-send-button" class="chat-send-button" aria-label="Отправить">&#10148;</button>
           </div>
         </div>
       </section>
@@ -124,13 +154,21 @@
         <span class="bottom-nav__icon" aria-hidden="true">&#128101;</span>
         <span>Команды</span>
       </button>
-      <button type="button" class="bottom-nav__btn" id="admin-tab-reviews" aria-selected="false" hidden>
+      <button type="button" class="bottom-nav__btn" id="admin-tab-support" aria-selected="false" hidden>
+        <span class="bottom-nav__icon" aria-hidden="true">&#127908;</span>
+        <span>Техподдержка</span>
+      </button>
+      <button type="button" class="bottom-nav__btn" id="admin-tab-dialogues" aria-selected="false" hidden>
+        <span class="bottom-nav__icon" aria-hidden="true">&#128172;</span>
+        <span>Диалоги</span>
+      </button>
+      <button type="button" class="bottom-nav__btn" id="admin-tab-reviews" aria-selected="false">
         <span class="bottom-nav__icon" aria-hidden="true">&#128203;</span>
         <span>Проверка</span>
       </button>
       <button type="button" class="bottom-nav__btn" id="admin-tab-approvals" aria-selected="false" hidden>
-        <span class="bottom-nav__icon" aria-hidden="true">&#128172;</span>
-        <span>Диалоги</span>
+        <span class="bottom-nav__icon" aria-hidden="true">&#9989;</span>
+        <span>Блок-посты</span>
       </button>
     </nav>
   </section>

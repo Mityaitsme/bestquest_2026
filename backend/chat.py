@@ -127,15 +127,60 @@ def send_team_message(team_id: str, chat_id: str, content: str) -> dict:
     return {"mode": chat["mode"], "character_id": chat["character_id"]}
 
 
-def list_team_chats_admin(team_id: str) -> list[dict]:
+def list_characters() -> list[dict]:
+    """Все игровые персонажи-боты — чтобы оператор выбрал, чьи чаты смотреть."""
     client = get_supabase_client()
-    return (
-        client.table("chats")
-        .select("id, chat_type, mode, characters(name, nickname)")
-        .eq("team_id", team_id)
-        .execute()
-        .data
-    )
+    return client.table("characters").select("id, name, nickname").order("name").execute().data
+
+
+def _chats_overview(client, chat_type: str, character_id: str | None = None) -> list[dict]:
+    """Чаты одного типа (support/character) по ВСЕМ командам сразу, каждый —
+    с именем команды и временем последнего сообщения, отсортированные от
+    самого недавнего к самому старому (чаты без единого сообщения — в конце)."""
+    query = client.table("chats").select("id, team_id, mode, teams(name)").eq("chat_type", chat_type)
+    if character_id is not None:
+        query = query.eq("character_id", character_id)
+    chats = query.execute().data
+
+    chat_ids = [c["id"] for c in chats]
+    last_message_at: dict[str, str] = {}
+    if chat_ids:
+        messages = (
+            client.table("messages")
+            .select("chat_id, created_at")
+            .in_("chat_id", chat_ids)
+            .order("created_at", desc=True)
+            .execute()
+            .data
+        )
+        for message in messages:
+            last_message_at.setdefault(message["chat_id"], message["created_at"])
+
+    overview = [
+        {
+            "id": chat["id"],
+            "team_id": chat["team_id"],
+            "team_name": chat["teams"]["name"] if chat["teams"] else "?",
+            "mode": chat["mode"],
+            "last_message_at": last_message_at.get(chat["id"]),
+        }
+        for chat in chats
+    ]
+    overview.sort(key=lambda c: c["last_message_at"] or "", reverse=True)
+    return overview
+
+
+def list_support_chats_overview() -> list[dict]:
+    """Раздел 'Техподдержка' в админке: чаты техподдержки всех команд сразу."""
+    client = get_supabase_client()
+    return _chats_overview(client, "support")
+
+
+def list_character_chats_overview(character_id: str) -> list[dict]:
+    """Раздел 'Диалоги' в админке: чаты конкретного персонажа-бота со всеми
+    командами сразу (выбор персонажа — на фронтенде)."""
+    client = get_supabase_client()
+    return _chats_overview(client, "character", character_id)
 
 
 def list_messages_admin(chat_id: str) -> list[dict]:

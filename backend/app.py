@@ -13,11 +13,13 @@ from calls import CallError, dial_number, submit_phase_password
 from chat import (
     ChatError,
     get_character_id_for_chat,
+    list_character_chats_overview,
+    list_characters,
     list_messages,
     list_messages_admin,
     list_new_messages_since,
+    list_support_chats_overview,
     list_team_chats,
-    list_team_chats_admin,
     seed_team_chats,
     send_admin_message,
     send_team_message,
@@ -311,16 +313,14 @@ def create_app() -> Flask:
 
     @app.get("/admin/reviews")
     def admin_list_reviews() -> ResponseReturnValue:
-        denied = require_operator()
-        if denied:
-            return denied
+        if session.get("identity") != "admin":
+            return jsonify(status="error", detail="Требуется вход как админ"), 401
         return jsonify(status="ok", reviews=list_pending_reviews())
 
     @app.get("/admin/reviews/<review_id>/photo-url")
     def admin_review_photo_url(review_id: str) -> ResponseReturnValue:
-        denied = require_operator()
-        if denied:
-            return denied
+        if session.get("identity") != "admin":
+            return jsonify(status="error", detail="Требуется вход как админ"), 401
 
         try:
             url = get_photo_signed_url(review_id)
@@ -331,9 +331,8 @@ def create_app() -> Flask:
 
     @app.post("/admin/reviews/<review_id>/decision")
     def admin_review_decision(review_id: str) -> ResponseReturnValue:
-        denied = require_operator()
-        if denied:
-            return denied
+        if session.get("identity") != "admin":
+            return jsonify(status="error", detail="Требуется вход как админ"), 401
 
         data = request.get_json(silent=True) or {}
         accept = bool(data.get("accept"))
@@ -401,12 +400,26 @@ def create_app() -> Flask:
             # ChatGPT недоступен, просто сообщаем, что автоответа не будет.
             return jsonify(status="ok", gpt_reply=None, gpt_error=str(exc))
 
-    @app.get("/admin/teams/<team_id>/chats")
-    def admin_get_team_chats(team_id: str) -> ResponseReturnValue:
+    @app.get("/admin/support-chats")
+    def admin_list_support_chats() -> ResponseReturnValue:
         denied = require_operator()
         if denied:
             return denied
-        return jsonify(status="ok", chats=list_team_chats_admin(team_id))
+        return jsonify(status="ok", chats=list_support_chats_overview())
+
+    @app.get("/admin/characters")
+    def admin_list_characters() -> ResponseReturnValue:
+        denied = require_operator()
+        if denied:
+            return denied
+        return jsonify(status="ok", characters=list_characters())
+
+    @app.get("/admin/characters/<character_id>/chats")
+    def admin_get_character_chats(character_id: str) -> ResponseReturnValue:
+        denied = require_operator()
+        if denied:
+            return denied
+        return jsonify(status="ok", chats=list_character_chats_overview(character_id))
 
     @app.get("/admin/chats/<chat_id>/messages")
     def admin_get_chat_messages(chat_id: str) -> ResponseReturnValue:
