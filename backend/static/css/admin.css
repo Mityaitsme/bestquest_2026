@@ -294,3 +294,21 @@
   opacity: 1;
   transform: translateY(0);
 }
+
+/* ---- Admin: unread dot on bottom-nav tabs (Техподдержка/Проверка/Блок-посты) ---- */
+
+.bottom-nav__icon-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.bottom-nav__dot {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--danger);
+  border: 1.5px solid var(--surface);
+}

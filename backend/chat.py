@@ -135,26 +135,28 @@ def list_characters() -> list[dict]:
 
 def _chats_overview(client, chat_type: str, character_id: str | None = None) -> list[dict]:
     """Чаты одного типа (support/character) по ВСЕМ командам сразу, каждый —
-    с именем команды и временем последнего сообщения, отсортированные от
-    самого недавнего к самому старому (чаты без единого сообщения — в конце)."""
+    с именем команды, временем последнего сообщения и needs_reply (правда,
+    если последнее сообщение — от команды, то есть ей ещё не ответили),
+    отсортированные от самого недавнего к самому старому (чаты без единого
+    сообщения — в конце)."""
     query = client.table("chats").select("id, team_id, mode, teams(name)").eq("chat_type", chat_type)
     if character_id is not None:
         query = query.eq("character_id", character_id)
     chats = query.execute().data
 
     chat_ids = [c["id"] for c in chats]
-    last_message_at: dict[str, str] = {}
+    last_message_by_chat: dict[str, dict] = {}
     if chat_ids:
         messages = (
             client.table("messages")
-            .select("chat_id, created_at")
+            .select("chat_id, created_at, sender_type")
             .in_("chat_id", chat_ids)
             .order("created_at", desc=True)
             .execute()
             .data
         )
         for message in messages:
-            last_message_at.setdefault(message["chat_id"], message["created_at"])
+            last_message_by_chat.setdefault(message["chat_id"], message)
 
     overview = [
         {
@@ -162,7 +164,8 @@ def _chats_overview(client, chat_type: str, character_id: str | None = None) -> 
             "team_id": chat["team_id"],
             "team_name": chat["teams"]["name"] if chat["teams"] else "?",
             "mode": chat["mode"],
-            "last_message_at": last_message_at.get(chat["id"]),
+            "last_message_at": last_message_by_chat.get(chat["id"], {}).get("created_at"),
+            "needs_reply": last_message_by_chat.get(chat["id"], {}).get("sender_type") == "team",
         }
         for chat in chats
     ]

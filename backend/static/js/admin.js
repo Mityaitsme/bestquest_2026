@@ -41,6 +41,23 @@
     approvals: document.getElementById("admin-panel-approvals"),
   };
 
+  // Красный кружок на вкладке "где-то есть неотвеченный запрос команды" —
+  // Техподдержка (последнее сообщение чата — от команды), Проверка и
+  // Блок-посты (есть хоть одна нерешённая заявка). Отражает текущее
+  // состояние всегда, а не только "новое с момента входа" (в отличие от
+  // баннеров ниже) — так что считается и обновляется отдельно от них.
+  const navDots = {
+    support: document.getElementById("admin-tab-support-dot"),
+    reviews: document.getElementById("admin-tab-reviews-dot"),
+    approvals: document.getElementById("admin-tab-approvals-dot"),
+  };
+
+  function setDot(key, hasUnanswered) {
+    if (navDots[key]) {
+      navDots[key].hidden = !hasUnanswered;
+    }
+  }
+
   function setSection(section) {
     for (const key of Object.keys(sections)) {
       sections[key].hidden = key !== section;
@@ -679,6 +696,7 @@
         return;
       }
       supportBrowser.renderList(data.chats, "Чатов техподдержки пока нет");
+      setDot("support", data.chats.some((chat) => chat.needs_reply));
     } catch (err) {
       supportBrowser.renderList([], "Не удалось загрузить чаты");
     }
@@ -762,6 +780,7 @@
         return;
       }
       renderReviews(data.reviews);
+      setDot("reviews", data.reviews.length > 0);
     } catch (err) {
       reviewListEmptyEl.hidden = false;
       reviewListEmptyEl.textContent = "Не удалось загрузить заявки";
@@ -923,6 +942,7 @@
         return;
       }
       renderApprovals(data.approvals);
+      setDot("approvals", data.approvals.length > 0);
     } catch (err) {
       approvalListEmptyEl.hidden = false;
       approvalListEmptyEl.textContent = "Не удалось загрузить заявки";
@@ -1055,13 +1075,16 @@
   }
 
   async function pollPendingItems() {
+    // Актёру доступна только "Проверка" — опрашиваем только её. Оператору
+    // ещё "Блок-посты" и "Техподдержка" (для кружка, без баннера).
+    const isOperator = currentRole === "operator";
     try {
-      const [reviewsResponse, approvalsResponse] = await Promise.all([
-        fetch("/admin/reviews"),
-        fetch("/admin/dialogue/approvals"),
-      ]);
-      const reviewsData = await reviewsResponse.json();
-      const approvalsData = await approvalsResponse.json();
+      const requests = [fetch("/admin/reviews")];
+      if (isOperator) {
+        requests.push(fetch("/admin/dialogue/approvals"), fetch("/admin/support-chats"));
+      }
+      const responses = await Promise.all(requests);
+      const reviewsData = await responses[0].json();
 
       if (reviewsData.status === "ok") {
         syncPendingBanners("review", reviewsData.reviews, knownPendingReviewIds, (review) => ({
@@ -1071,16 +1094,28 @@
             loadReviews();
           },
         }));
+        setDot("reviews", reviewsData.reviews.length > 0);
       }
-      if (approvalsData.status === "ok") {
-        syncPendingBanners("approval", approvalsData.approvals, knownPendingApprovalIds, (approval) => ({
-          text: `Новый блок-пост диалога: ${approval.teams ? approval.teams.name : "команда"}`,
-          onClick: () => {
-            setSection("approvals");
-            loadApprovals();
-          },
-        }));
+
+      if (isOperator) {
+        const approvalsData = await responses[1].json();
+        if (approvalsData.status === "ok") {
+          syncPendingBanners("approval", approvalsData.approvals, knownPendingApprovalIds, (approval) => ({
+            text: `Новый блок-пост диалога: ${approval.teams ? approval.teams.name : "команда"}`,
+            onClick: () => {
+              setSection("approvals");
+              loadApprovals();
+            },
+          }));
+          setDot("approvals", approvalsData.approvals.length > 0);
+        }
+
+        const supportData = await responses[2].json();
+        if (supportData.status === "ok") {
+          setDot("support", supportData.chats.some((chat) => chat.needs_reply));
+        }
       }
+
       hasPolledPendingOnce = true;
     } catch (err) {
       // пропускаем цикл опроса - следующий тик попробует снова
@@ -1179,9 +1214,7 @@
       navButtons.approvals.hidden = role !== "operator";
       setSection("teams");
       showTeamsListView();
-      if (role === "operator") {
-        startPendingItemsPolling();
-      }
+      startPendingItemsPolling();
     },
   };
 })();
