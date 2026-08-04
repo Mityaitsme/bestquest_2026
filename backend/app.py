@@ -57,7 +57,10 @@ from tasks import (
 )
 
 SESSION_LIFETIME_DAYS = 30
-MAX_UPLOAD_CONTENT_LENGTH = 9 * 1024 * 1024
+# Чуть больше, чем reviews.MAX_PHOTO_SIZE_BYTES (20 МБ) - запас на форму
+# вокруг самого файла, чтобы лимит первым сработал в reviews.py с понятной
+# ошибкой в JSON, а не здесь с сырым 413 без тела.
+MAX_UPLOAD_CONTENT_LENGTH = 21 * 1024 * 1024
 
 
 def create_app() -> Flask:
@@ -299,7 +302,9 @@ def create_app() -> Flask:
         photo_file = request.files.get("photo")
         if photo_file and photo_file.filename:
             try:
-                photo_path = upload_review_photo(photo_file.read(), photo_file.mimetype)
+                photo_path = upload_review_photo(
+                    photo_file.read(), photo_file.mimetype, photo_file.filename
+                )
             except ReviewError as exc:
                 return jsonify(status="error", detail=str(exc)), 400
 

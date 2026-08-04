@@ -500,6 +500,18 @@ button {
   font-size: 14px;
 }
 
+/* ---- "точно?" confirm step для чекбокс-задач (тот же паттерн, что у
+   актёрского подтверждения в админке) ---- */
+
+.task-action__confirm-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.task-action__confirm-button {
+  flex: 1;
+}
+
 .task-card__description:empty {
   display: none;
 }

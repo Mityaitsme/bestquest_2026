@@ -111,10 +111,35 @@
   // last_message_at чата новее сохранённого - там реально новое сообщение,
   // не то же самое, что уже видели. Заявки на проверку и блок-посты этой
   // логике намеренно не подчиняются - они гаснут только решением, как и раньше.
-  const readChatLastSeenAt = new Map();
+  // Переживает перезагрузку через localStorage - той же причине, что и
+  // knownPending*Ids чуть ниже (см. комментарий там).
+  const READ_CHATS_STORAGE_KEY = "bestquest_admin_read_chats";
+
+  function loadPersistedReadState() {
+    try {
+      const raw = localStorage.getItem(READ_CHATS_STORAGE_KEY);
+      return raw ? new Map(Object.entries(JSON.parse(raw))) : new Map();
+    } catch (err) {
+      return new Map();
+    }
+  }
+
+  function savePersistedReadState(readState) {
+    try {
+      localStorage.setItem(READ_CHATS_STORAGE_KEY, JSON.stringify(Object.fromEntries(readState)));
+    } catch (err) {
+      // localStorage недоступен - переживём, просто без сохранения между перезагрузками
+    }
+  }
+
+  const readChatLastSeenAt = loadPersistedReadState();
 
   function isChatUnreadByOperator(chat) {
-    if (!chat.needs_reply) {
+    // Только режим "оператор" - в scripted/gpt команда не пишет оператору
+    // напрямую, там всё отвечает сценарий/GPT, и needs_reply там либо не
+    // возникает вовсе, либо возникает мимолётно как часть автоматики, а не
+    // как "человеку нужно прочитать и что-то сделать".
+    if (chat.mode !== "operator" || !chat.needs_reply) {
       return false;
     }
     const lastSeenAt = readChatLastSeenAt.get(chat.id);
@@ -620,6 +645,7 @@
     function openChat(chat) {
       currentChat = chat;
       readChatLastSeenAt.set(chat.id, chat.last_message_at);
+      savePersistedReadState(readChatLastSeenAt);
       refs.titleEl.textContent = chat.team_name;
       refs.modeErrorEl.textContent = "";
       refs.modeSelect.value = chat.mode;
@@ -1168,19 +1194,48 @@
   const bannerContainerEl = document.getElementById("admin-banner-container");
   const PENDING_POLL_INTERVAL_MS = 10000;
 
+  // knownPending*Ids раньше жили только в памяти и обнулялись в начале
+  // каждого startPendingItemsPolling() - а он вызывается при КАЖДОЙ загрузке
+  // страницы (не только при настоящем логине), включая обычный F5. В
+  // результате все заявки/чаты, которые уже были в очереди и уже показывали
+  // баннер, на каждой перезагрузке считались "новыми" и баннер вылезал по
+  // новой для всего разом. Теперь известные id переживают перезагрузку через
+  // localStorage - баннер вылезает только для по-настоящему нового, а не для
+  // того, что уже показывали в этом браузере.
+  const KNOWN_IDS_STORAGE_KEYS = {
+    review: "bestquest_admin_known_reviews",
+    approval: "bestquest_admin_known_approvals",
+    "support-chat": "bestquest_admin_known_support_chats",
+    "dialogue-chat": "bestquest_admin_known_dialogue_chats",
+  };
+
+  function loadPersistedIds(storageKey) {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch (err) {
+      return new Set();
+    }
+  }
+
+  function savePersistedIds(storageKey, idSet) {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify([...idSet]));
+    } catch (err) {
+      // localStorage недоступен (приватный режим и т.п.) - просто не сохраняем,
+      // баннеры продолжат работать, только без переживания перезагрузки
+    }
+  }
+
   let pendingPollTimer = null;
-  const knownPendingReviewIds = new Set();
-  const knownPendingApprovalIds = new Set();
-  const knownNeedsReplySupportChatIds = new Set();
-  const knownNeedsReplyDialogueChatIds = new Set();
+  const knownPendingReviewIds = loadPersistedIds(KNOWN_IDS_STORAGE_KEYS.review);
+  const knownPendingApprovalIds = loadPersistedIds(KNOWN_IDS_STORAGE_KEYS.approval);
+  const knownNeedsReplySupportChatIds = loadPersistedIds(KNOWN_IDS_STORAGE_KEYS["support-chat"]);
+  const knownNeedsReplyDialogueChatIds = loadPersistedIds(KNOWN_IDS_STORAGE_KEYS["dialogue-chat"]);
   const bannerElByKey = new Map();
 
   function startPendingItemsPolling() {
     stopPendingItemsPolling();
-    knownPendingReviewIds.clear();
-    knownPendingApprovalIds.clear();
-    knownNeedsReplySupportChatIds.clear();
-    knownNeedsReplyDialogueChatIds.clear();
     pollPendingItems();
     pendingPollTimer = setInterval(pollPendingItems, PENDING_POLL_INTERVAL_MS);
   }
@@ -1264,7 +1319,7 @@
           const needsReplyChats = dialogueChatsData.chats.filter(isChatUnreadByOperator);
           setDot("dialogues", needsReplyChats.length > 0);
           syncPendingBanners("dialogue-chat", needsReplyChats, knownNeedsReplyDialogueChatIds, (chat) => ({
-            text: `Новое сообщение в диалоге: ${chat.team_name}`,
+            text: `Новое сообщение в диалоге (${chat.character_name || "персонаж"}): ${chat.team_name}`,
             onClick: () => {
               setSection("dialogues");
               loadCharactersAndChats();
@@ -1299,6 +1354,11 @@
     knownIds.clear();
     for (const id of currentIds) {
       knownIds.add(id);
+    }
+
+    const storageKey = KNOWN_IDS_STORAGE_KEYS[kind];
+    if (storageKey) {
+      savePersistedIds(storageKey, knownIds);
     }
   }
 

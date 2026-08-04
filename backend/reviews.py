@@ -6,14 +6,26 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from supabase_client import get_supabase_client
 from tasks import mark_stage_completed
 
 PHOTO_BUCKET = "manual-review-photos"
-MAX_PHOTO_SIZE_BYTES = 8 * 1024 * 1024
+MAX_PHOTO_SIZE_BYTES = 20 * 1024 * 1024  # тот же лимит, что настроен на самом бакете в Supabase
 ALLOWED_PHOTO_CONTENT_TYPES = ("image/jpeg", "image/png", "image/webp", "image/heic", "image/heif")
+# Некоторые браузеры/ОС не умеют определить MIME-тип HEIC/HEIF-файла и
+# присылают content_type пустым или общим ("application/octet-stream") —
+# тогда используем расширение файла как резервный способ определить тип.
+EXTENSION_CONTENT_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
+}
 SIGNED_URL_TTL_SECONDS = 300
 
 
@@ -21,17 +33,25 @@ class ReviewError(Exception):
     """Ожидаемая ошибка (этап не для ручной проверки, неподходящий файл и т.п.)."""
 
 
-def upload_review_photo(content: bytes, content_type: str) -> str:
+def upload_review_photo(content: bytes, content_type: str, filename: str = "") -> str:
     """Загрузить фото в приватный бакет, вернуть путь внутри бакета (не публичный URL)."""
-    if content_type not in ALLOWED_PHOTO_CONTENT_TYPES:
-        raise ReviewError(f"Неподдерживаемый тип файла: {content_type}")
+    resolved_content_type = content_type
+    if resolved_content_type not in ALLOWED_PHOTO_CONTENT_TYPES:
+        guessed = EXTENSION_CONTENT_TYPES.get(Path(filename).suffix.lower())
+        if guessed:
+            resolved_content_type = guessed
+
+    if resolved_content_type not in ALLOWED_PHOTO_CONTENT_TYPES:
+        raise ReviewError(f"Неподдерживаемый тип файла: {content_type or 'неизвестен'}")
     if len(content) > MAX_PHOTO_SIZE_BYTES:
-        raise ReviewError("Файл слишком большой (максимум 8 МБ)")
+        raise ReviewError("Файл слишком большой (максимум 20 МБ)")
 
     client = get_supabase_client()
-    extension = content_type.split("/")[-1]
+    extension = resolved_content_type.split("/")[-1]
     path = f"{uuid.uuid4()}.{extension}"
-    client.storage.from_(PHOTO_BUCKET).upload(path, content, {"content-type": content_type})
+    client.storage.from_(PHOTO_BUCKET).upload(
+        path, content, {"content-type": resolved_content_type, "upsert": "true"}
+    )
     return path
 
 

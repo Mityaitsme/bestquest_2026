@@ -218,7 +218,11 @@ def _chats_overview(client, chat_type: str, character_id: str | None = None) -> 
     если последнее сообщение — от команды, то есть ей ещё не ответили),
     отсортированные от самого недавнего к самому старому (чаты без единого
     сообщения — в конце)."""
-    query = client.table("chats").select("id, team_id, mode, teams(name)").eq("chat_type", chat_type)
+    query = (
+        client.table("chats")
+        .select("id, team_id, mode, teams(name), characters(name)")
+        .eq("chat_type", chat_type)
+    )
     if character_id is not None:
         query = query.eq("character_id", character_id)
     chats = query.execute().data
@@ -242,6 +246,7 @@ def _chats_overview(client, chat_type: str, character_id: str | None = None) -> 
             "id": chat["id"],
             "team_id": chat["team_id"],
             "team_name": chat["teams"]["name"] if chat["teams"] else "?",
+            "character_name": chat["characters"]["name"] if chat["characters"] else None,
             "mode": chat["mode"],
             "last_message_at": last_message_by_chat.get(chat["id"], {}).get("created_at"),
             "needs_reply": last_message_by_chat.get(chat["id"], {}).get("sender_type") == "team",

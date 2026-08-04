@@ -192,6 +192,17 @@ def _advance_to(client, team_id: str, character_id: str, node_id: str | None) ->
         "team_id", team_id
     ).eq("character_id", character_id).execute()
 
+    if node_id is None:
+        # Сценарный диалог закончился (следующего узла нет) - персонаж сам
+        # "уходит оффлайн": chat.mode -> muted. Даром переиспользует уже
+        # готовое поведение muted-режима (и у команды — "нельзя писать", и
+        # в списке чатов — статус "оффлайн"), вместо отдельной ветки под
+        # "диалог кончился, но формально ещё scripted". Оператор всё ещё
+        # может вручную переключить режим обратно, discovered не откатывается.
+        client.table("chats").update({"mode": "muted"}).eq("team_id", team_id).eq(
+            "character_id", character_id
+        ).execute()
+
 
 def _get_character_chat(client, team_id: str, character_id: str) -> tuple[str, str]:
     chat = (

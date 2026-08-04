@@ -17,6 +17,10 @@
     muted: "оффлайн",
   };
 
+  // Тот же лимит, что в reviews.py: MAX_PHOTO_SIZE_BYTES и на самом бакете
+  // manual-review-photos в Supabase Storage.
+  const MANUAL_REVIEW_MAX_PHOTO_BYTES = 20 * 1024 * 1024;
+
   const FETCH_RETRY_ATTEMPTS = 3;
   const FETCH_RETRY_DELAY_MS = 400;
 
@@ -273,18 +277,60 @@
     if (stage.completion_type === "checkbox") {
       const wrap = document.createElement("div");
       wrap.className = "task-action";
+      wrap.addEventListener("click", (event) => event.stopPropagation());
 
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "btn-primary task-action__button";
-      button.textContent = "Подтвердить";
+      const askButton = document.createElement("button");
+      askButton.type = "button";
+      askButton.className = "btn-primary task-action__button";
+      askButton.textContent = "Подтвердить";
+      wrap.appendChild(askButton);
+
+      const confirmNote = document.createElement("p");
+      confirmNote.className = "task-review__status";
+      confirmNote.textContent = "Внимание: вы уверены, что выполнили это задание?";
+      confirmNote.hidden = true;
+      wrap.appendChild(confirmNote);
+
+      const confirmRow = document.createElement("div");
+      confirmRow.className = "task-action__confirm-row";
+      confirmRow.hidden = true;
+
+      const confirmButton = document.createElement("button");
+      confirmButton.type = "button";
+      confirmButton.className = "btn-primary task-action__button task-action__confirm-button";
+      confirmButton.textContent = "Да";
+      confirmRow.appendChild(confirmButton);
+
+      const cancelButton = document.createElement("button");
+      cancelButton.type = "button";
+      cancelButton.className = "btn-secondary task-action__button task-action__confirm-button";
+      cancelButton.textContent = "Отмена";
+      confirmRow.appendChild(cancelButton);
+
+      wrap.appendChild(confirmRow);
 
       const error = document.createElement("p");
       error.className = "form-error";
+      wrap.appendChild(error);
 
-      button.addEventListener("click", async (event) => {
-        event.stopPropagation();
-        button.disabled = true;
+      function showAsk() {
+        askButton.hidden = false;
+        confirmNote.hidden = true;
+        confirmRow.hidden = true;
+        error.textContent = "";
+      }
+
+      askButton.addEventListener("click", () => {
+        askButton.hidden = true;
+        confirmNote.hidden = false;
+        confirmRow.hidden = false;
+      });
+
+      cancelButton.addEventListener("click", showAsk);
+
+      confirmButton.addEventListener("click", async () => {
+        confirmButton.disabled = true;
+        cancelButton.disabled = true;
         error.textContent = "";
         try {
           const response = await fetch(`/tasks/${task.stage_id}/checkbox-complete`, {
@@ -293,19 +339,19 @@
           const data = await response.json();
           if (data.status !== "ok") {
             error.textContent = data.detail || "Не получилось подтвердить";
-            button.disabled = false;
+            confirmButton.disabled = false;
+            cancelButton.disabled = false;
             return;
           }
           await animateTaskCardExit(wrap.closest(".task-card"));
           loadTasks();
         } catch (err) {
           error.textContent = "Не удалось связаться с сервером";
-          button.disabled = false;
+          confirmButton.disabled = false;
+          cancelButton.disabled = false;
         }
       });
 
-      wrap.appendChild(button);
-      wrap.appendChild(error);
       return { element: wrap };
     }
 
@@ -375,6 +421,10 @@
         error.textContent = "Напишите ответ или прикрепите фото";
         return;
       }
+      if (file && file.size > MANUAL_REVIEW_MAX_PHOTO_BYTES) {
+        error.textContent = "Файл слишком большой (максимум 20 МБ)";
+        return;
+      }
 
       submitBtn.disabled = true;
       status.textContent = "";
@@ -390,6 +440,15 @@
           method: "POST",
           body: formData,
         });
+        // Файл больше MAX_CONTENT_LENGTH - Flask отдаёт сырой 413 без JSON-тела,
+        // до нашей собственной (более узкой и понятной) проверки в reviews.py
+        // дело не доходит. Раньше это выглядело как "не удалось связаться с
+        // сервером" без объяснения причины.
+        if (response.status === 413) {
+          submitBtn.disabled = false;
+          error.textContent = "Файл слишком большой (максимум 20 МБ)";
+          return;
+        }
         const data = await response.json();
         submitBtn.disabled = false;
 
@@ -835,9 +894,14 @@
     stopDialogueWaitPolling();
 
     if (state.finished || !state.options || state.options.length === 0) {
+      // Диалог кончился - backend уже перевёл чат в muted (см. dialogue.py:
+      // _advance_to), так что при следующем открытии чата команда попадёт в
+      // обычную ветку "нельзя писать" через chatReadonlyNote. Этот текст -
+      // только на случай, если диалог закончился прямо в открытом чате, ещё
+      // до следующего openChat().
       const empty = document.createElement("p");
       empty.className = "chat-options__note";
-      empty.textContent = "Пока новых реплик нет.";
+      empty.textContent = "Сейчас в этом чате нельзя писать.";
       chatOptionsEl.appendChild(empty);
       return;
     }
