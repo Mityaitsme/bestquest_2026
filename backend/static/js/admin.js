@@ -997,10 +997,41 @@
     img.alt = "Фото заявки";
     wrap.appendChild(img);
 
+    // Большинство браузеров (кроме Safari) не умеют показать HEIC/HEIF
+    // прямо в <img> - вместо тихо сломанной картинки явно объясняем это и
+    // сразу даём скачать оригинал, чтобы открыть его в системном просмотрщике.
+    const imgError = document.createElement("p");
+    imgError.className = "form-error review-card__photo-error";
+    imgError.textContent =
+      "Браузер не смог показать это фото (часто бывает с HEIC) — скачайте файл, чтобы посмотреть его на устройстве.";
+    imgError.hidden = true;
+    wrap.appendChild(imgError);
+
+    const downloadLink = document.createElement("a");
+    downloadLink.className = "btn-secondary review-card__photo-button";
+    downloadLink.textContent = "Скачать фото";
+    downloadLink.target = "_blank";
+    downloadLink.rel = "noopener";
+    downloadLink.hidden = true;
+    wrap.appendChild(downloadLink);
+
+    img.addEventListener("error", () => {
+      img.hidden = true;
+      imgError.hidden = false;
+    });
+    img.addEventListener("load", () => {
+      imgError.hidden = true;
+    });
+
+    let photoUrl = null;
+
     button.addEventListener("click", async () => {
-      if (!img.hidden) {
+      if (photoUrl) {
         img.hidden = true;
+        imgError.hidden = true;
+        downloadLink.hidden = true;
         button.textContent = "Показать фото";
+        photoUrl = null; // ссылка подписанная, с TTL - при повторном показе запросим свежую
         return;
       }
 
@@ -1009,8 +1040,11 @@
         const response = await fetch(`/admin/reviews/${review.id}/photo-url`);
         const data = await response.json();
         if (data.status === "ok") {
+          photoUrl = data.url;
           img.src = data.url;
           img.hidden = false;
+          downloadLink.href = data.url;
+          downloadLink.hidden = false;
           button.textContent = "Скрыть фото";
         }
       } finally {
