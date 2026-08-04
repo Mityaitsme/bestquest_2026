@@ -12,6 +12,7 @@ from auth import AuthError, login_admin, login_team, register_team
 from calls import CallError, dial_number, submit_phase_password
 from chat import (
     ChatError,
+    discover_chat,
     get_character_id_for_chat,
     list_character_chats_overview,
     list_characters,
@@ -350,6 +351,18 @@ def create_app() -> Flask:
         if session.get("identity") != "team":
             return jsonify(status="error", detail="Требуется вход как команда"), 401
         return jsonify(status="ok", chats=list_team_chats(session["team_id"]))
+
+    @app.post("/chats/discover")
+    def post_chat_discover() -> ResponseReturnValue:
+        if session.get("identity") != "team":
+            return jsonify(status="error", detail="Требуется вход как команда"), 401
+
+        data = request.get_json(silent=True) or {}
+        nickname = str(data.get("nickname", ""))
+        if not nickname.strip():
+            return jsonify(status="error", detail="Введите ник"), 400
+
+        return jsonify(status="ok", **discover_chat(session["team_id"], nickname))
 
     @app.get("/chats/new-messages")
     def get_new_messages() -> ResponseReturnValue:

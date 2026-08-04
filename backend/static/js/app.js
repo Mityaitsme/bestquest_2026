@@ -118,6 +118,9 @@
   const chatOptionsEl = document.getElementById("chat-options");
   const chatReadonlyNote = document.getElementById("chat-readonly-note");
   const toastContainerEl = document.getElementById("toast-container");
+  const chatSearchInput = document.getElementById("chat-search-input");
+  const chatSearchButton = document.getElementById("chat-search-button");
+  const chatSearchError = document.getElementById("chat-search-error");
 
   let currentChat = null;
   let allChats = [];
@@ -528,6 +531,42 @@
       chatListEmptyEl.textContent = "Не удалось загрузить чаты";
     }
   }
+
+  async function searchChatByNickname() {
+    const nickname = chatSearchInput.value.trim();
+    chatSearchError.textContent = "";
+    if (!nickname) {
+      return;
+    }
+    chatSearchButton.disabled = true;
+    try {
+      const response = await fetch("/chats/discover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nickname }),
+      });
+      const data = await response.json();
+      if (data.status !== "ok" || !data.found) {
+        chatSearchError.textContent = "Такого ника нет";
+        return;
+      }
+      chatSearchInput.value = "";
+      await loadChats();
+      openChat(data.chat, getChatDisplayName(data.chat));
+    } catch (err) {
+      chatSearchError.textContent = "Не удалось связаться с сервером";
+    } finally {
+      chatSearchButton.disabled = false;
+    }
+  }
+
+  chatSearchButton.addEventListener("click", searchChatByNickname);
+  chatSearchInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      searchChatByNickname();
+    }
+  });
 
   function renderChatList(chats) {
     chatListEl.innerHTML = "";

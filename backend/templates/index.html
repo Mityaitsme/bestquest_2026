@@ -52,6 +52,11 @@
 
       <section id="panel-chat" class="panel" hidden>
         <div id="chat-list-view">
+          <div class="chat-search-row">
+            <input type="text" id="chat-search-input" class="chat-search-input" placeholder="#ник персонажа" autocomplete="off">
+            <button type="button" id="chat-search-button" class="btn-secondary chat-search-button">Найти</button>
+          </div>
+          <p class="form-error" id="chat-search-error"></p>
           <div id="chat-list" class="chat-list"></div>
           <p id="chat-list-empty" class="empty-state" hidden></p>
         </div>

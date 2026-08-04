@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Literal, Optional
 
+from chat import trigger_scripted_dialogue
 from supabase_client import get_supabase_client
 
 VISIBLE_STATUSES = ("available", "completed")
@@ -154,6 +155,22 @@ def mark_stage_completed(
     ).eq("team_id", team_id).eq("stage_id", stage_id).execute()
 
     _unlock_dependents(team_id, stage_id)
+    _fire_dialogue_triggers(client, team_id, stage_id)
+
+
+def _fire_dialogue_triggers(client, team_id: str, stage_id: str) -> None:
+    """Автотриггер сценарного диалога (см. import_content.py: ключ этапа
+    triggers_scripted_dialogue) — этап при выполнении сам переключает чат
+    с указанным персонажем в режим scripted, без ручного шага оператора."""
+    triggers = (
+        client.table("stage_dialogue_triggers")
+        .select("character_id")
+        .eq("stage_id", stage_id)
+        .execute()
+        .data
+    )
+    for trigger in triggers:
+        trigger_scripted_dialogue(team_id, trigger["character_id"])
 
 
 def complete_checkbox_stage(team_id: str, stage_id: str) -> None:

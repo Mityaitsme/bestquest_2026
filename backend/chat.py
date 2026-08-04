@@ -19,28 +19,107 @@ class ChatError(Exception):
 
 
 def seed_team_chats(team_id: str) -> None:
-    """При регистрации команды: чат с каждым персонажем + один чат техподдержки."""
+    """При регистрации команды: чат с каждым персонажем + один чат техподдержки.
+
+    Чаты с персонажами создаются НЕ обнаруженными (discovered=False) — команда
+    увидит их в своём списке только через поиск по нику (см. discover_chat)
+    или когда чат сам "откроется" сюжетным триггером (см. tasks.py:
+    mark_stage_completed + trigger_scripted_dialogue ниже). Чат техподдержки
+    виден всегда.
+    """
     client = get_supabase_client()
     characters = client.table("characters").select("id").execute().data
 
     rows = [
-        {"team_id": team_id, "character_id": c["id"], "chat_type": "character"}
+        {"team_id": team_id, "character_id": c["id"], "chat_type": "character", "discovered": False}
         for c in characters
     ]
-    rows.append({"team_id": team_id, "character_id": None, "chat_type": "support"})
+    rows.append(
+        {"team_id": team_id, "character_id": None, "chat_type": "support", "discovered": True}
+    )
 
     client.table("chats").insert(rows).execute()
 
 
 def list_team_chats(team_id: str) -> list[dict]:
+    """Чаты, видимые команде — только обнаруженные (см. seed_team_chats)."""
     client = get_supabase_client()
     return (
         client.table("chats")
         .select("id, chat_type, mode, characters(name, nickname)")
         .eq("team_id", team_id)
+        .eq("discovered", True)
         .execute()
         .data
     )
+
+
+def _normalize_nickname(value: str) -> str:
+    return value.strip().lstrip("#").strip().casefold()
+
+
+def discover_chat(team_id: str, nickname: str) -> dict:
+    """Команда ищет персонажа по нику: если ник верный, чат с ним становится
+    видимым в списке чатов команды (и остаётся видимым навсегда). Возвращает
+    {"found": bool, "chat": {...} | None}."""
+    client = get_supabase_client()
+    normalized = _normalize_nickname(nickname)
+    if not normalized:
+        return {"found": False, "chat": None}
+
+    characters = client.table("characters").select("id, name, nickname").execute().data
+    character = next(
+        (c for c in characters if c["nickname"].casefold() == normalized), None
+    )
+    if not character:
+        return {"found": False, "chat": None}
+
+    chat_rows = (
+        client.table("chats")
+        .select("id, chat_type, mode")
+        .eq("team_id", team_id)
+        .eq("character_id", character["id"])
+        .execute()
+        .data
+    )
+    if not chat_rows:
+        return {"found": False, "chat": None}
+
+    chat = chat_rows[0]
+    client.table("chats").update({"discovered": True}).eq("id", chat["id"]).execute()
+
+    return {
+        "found": True,
+        "chat": {
+            "id": chat["id"],
+            "chat_type": chat["chat_type"],
+            "mode": chat["mode"],
+            "characters": {"name": character["name"], "nickname": character["nickname"]},
+        },
+    }
+
+
+def trigger_scripted_dialogue(team_id: str, character_id: str) -> None:
+    """Автотриггер по сюжету (stage_dialogue_triggers, см. tasks.py и
+    import_content.py): чат команды с этим персонажем переключается в
+    режим scripted и становится видимым в списке чатов — не имеет смысла,
+    чтобы сюжет "заговорил" через чат, который команда структурно не может
+    увидеть. Оператор может позже вручную переключить режим обратно через
+    dropdown в админке, discovered при этом не откатывается."""
+    client = get_supabase_client()
+    chat_rows = (
+        client.table("chats")
+        .select("id")
+        .eq("team_id", team_id)
+        .eq("character_id", character_id)
+        .execute()
+        .data
+    )
+    if not chat_rows:
+        return
+    client.table("chats").update({"mode": "scripted", "discovered": True}).eq(
+        "id", chat_rows[0]["id"]
+    ).execute()
 
 
 def _get_own_chat(client, chat_id: str, team_id: str) -> dict:

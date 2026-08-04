@@ -25,6 +25,7 @@ from typing import Any
 
 import yaml
 
+from chat import trigger_scripted_dialogue
 from supabase_client import get_supabase_client
 
 DEFAULT_CONTENT_PATH = Path(__file__).resolve().parent.parent / "data" / "quest_content.yaml"
@@ -132,7 +133,7 @@ def validate_dialogues(characters: list[dict[str, Any]]) -> None:
             )
 
 
-def validate_stages(stages: list[dict[str, Any]]) -> None:
+def validate_stages(stages: list[dict[str, Any]], character_slugs: set[str]) -> None:
     all_slugs = {stage.get("slug") for stage in stages}
     seen_slugs: set[str] = set()
 
@@ -172,6 +173,13 @@ def validate_stages(stages: list[dict[str, Any]]) -> None:
         for prerequisite in stage.get("requires", []):
             if prerequisite not in all_slugs:
                 raise ContentError(f"Этап '{slug}' требует неизвестный этап '{prerequisite}'")
+
+        for character_slug in stage.get("triggers_scripted_dialogue", []):
+            if character_slug not in character_slugs:
+                raise ContentError(
+                    f"Этап '{slug}': triggers_scripted_dialogue ссылается на "
+                    f"неизвестного персонажа '{character_slug}'"
+                )
 
 
 def validate_phone_numbers(phone_numbers: list[dict[str, Any]]) -> None:
@@ -265,7 +273,12 @@ def _backfill_existing_teams(
         if missing_team_ids:
             client.table("chats").insert(
                 [
-                    {"team_id": team_id, "character_id": character_id, "chat_type": "character"}
+                    {
+                        "team_id": team_id,
+                        "character_id": character_id,
+                        "chat_type": "character",
+                        "discovered": False,
+                    }
                     for team_id in missing_team_ids
                 ]
             ).execute()
@@ -305,6 +318,37 @@ def _backfill_existing_teams(
         )
 
 
+def _apply_retroactive_triggers(client, stage_dialogue_triggers: dict[str, list[str]]) -> None:
+    """Если триггер (triggers_scripted_dialogue) добавили в контент уже после
+    того, как какие-то команды успели пройти нужный этап, применяем его
+    задним числом — иначе такие команды никогда не получили бы сценарный
+    диалог, хотя по сюжету он уже должен был начаться. Безопасно запускать
+    повторно: trigger_scripted_dialogue просто переустанавливает mode=
+    scripted/discovered=true, что для уже сработавшего триггера ничего не
+    меняет."""
+    if not stage_dialogue_triggers:
+        return
+
+    applied = 0
+    for stage_id, character_ids in stage_dialogue_triggers.items():
+        completed_team_ids = [
+            row["team_id"]
+            for row in client.table("team_stage_progress")
+            .select("team_id")
+            .eq("stage_id", stage_id)
+            .eq("status", "completed")
+            .execute()
+            .data
+        ]
+        for team_id in completed_team_ids:
+            for character_id in character_ids:
+                trigger_scripted_dialogue(team_id, character_id)
+                applied += 1
+
+    if applied:
+        print(f"\nЗадним числом применено сюжетных триггеров диалога: {applied}.")
+
+
 def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
     data = load_content(path)
     characters = data.get("characters", [])
@@ -312,7 +356,7 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
     phone_numbers = data.get("phone_numbers", [])
     validate_characters(characters)
     validate_dialogues(characters)
-    validate_stages(stages)
+    validate_stages(stages, {character["slug"] for character in characters})
     validate_phone_numbers(phone_numbers)
 
     client = get_supabase_client()
@@ -412,6 +456,7 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
         slug_to_id[stage["slug"]] = row["id"]
         print(f"этап: {stage['slug']}")
 
+    stage_dialogue_triggers: dict[str, list[str]] = {}
     for stage in stages:
         stage_id = slug_to_id[stage["slug"]]
 
@@ -420,6 +465,19 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
                 {"from_stage_id": slug_to_id[prerequisite_slug], "to_stage_id": stage_id},
                 on_conflict="from_stage_id,to_stage_id",
             ).execute()
+
+        trigger_character_ids = [
+            character_slug_to_id[slug] for slug in stage.get("triggers_scripted_dialogue", [])
+        ]
+        client.table("stage_dialogue_triggers").delete().eq("stage_id", stage_id).execute()
+        if trigger_character_ids:
+            client.table("stage_dialogue_triggers").insert(
+                [
+                    {"stage_id": stage_id, "character_id": character_id}
+                    for character_id in trigger_character_ids
+                ]
+            ).execute()
+            stage_dialogue_triggers[stage_id] = trigger_character_ids
 
         for field in stage.get("fields", []):
             field_row = (
@@ -452,6 +510,8 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
             ]
             if accepted_rows:
                 client.table("answer_field_accepted_values").insert(accepted_rows).execute()
+
+    _apply_retroactive_triggers(client, stage_dialogue_triggers)
 
     for phone in phone_numbers:
         character_slug = phone.get("character_slug")
