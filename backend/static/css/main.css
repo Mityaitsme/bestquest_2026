@@ -35,6 +35,7 @@
 html,
 body {
   height: 100%;
+  overflow: hidden;
 }
 
 body {
@@ -45,8 +46,15 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* height (не min-height!) — весь смысл "прижатых" хедера/панели и
+   скроллящейся только внутри себя ленты сообщений держится на том, что
+   каждый уровень flex-цепочки реально ограничен по высоте, а не просто
+   "не меньше" неё. С min-height: 100dvh оболочка могла свободно вырасти
+   выше экрана вместе с длинным чатом, и скроллилась вся страница целиком
+   (html/body), а не .chat-messages внутри неё. */
 .app-shell {
-  min-height: 100dvh;
+  height: 100dvh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
@@ -91,11 +99,13 @@ button {
 
 .auth-screen {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: var(--space-5) var(--space-4);
+  overflow-y: auto;
 }
 
 .auth-brand {
@@ -312,12 +322,24 @@ button {
   border-radius: 10px;
   cursor: pointer;
   font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
   transition: color 0.15s ease, background-color 0.15s ease;
 }
 
 .app-header__logout:hover {
   color: var(--text);
   background: var(--border);
+}
+
+/* Квадратная картинка внутри квадратной кнопки — object-fit:contain, чтобы
+   не обрезать и не искажать пропорции, чем бы её ни заменили. */
+.app-header__logout-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 /* display:flex обязателен — иначе flex:1/min-height:0 у #panel-chat и

@@ -103,6 +103,24 @@
     approvals: document.getElementById("admin-tab-approvals-dot"),
   };
 
+  // Техподдержка/Диалоги: точка и баннер должны гаснуть, когда оператор
+  // ПРОЧИТАЛ сообщение (открыл чат), а не только когда на него ОТВЕТИЛ —
+  // needs_reply с сервера отражает только "последнее сообщение от команды",
+  // само по себе не знает, смотрел ли его кто-то. chat.id -> last_message_at,
+  // каким он был в момент открытия чата; если к следующему опросу
+  // last_message_at чата новее сохранённого - там реально новое сообщение,
+  // не то же самое, что уже видели. Заявки на проверку и блок-посты этой
+  // логике намеренно не подчиняются - они гаснут только решением, как и раньше.
+  const readChatLastSeenAt = new Map();
+
+  function isChatUnreadByOperator(chat) {
+    if (!chat.needs_reply) {
+      return false;
+    }
+    const lastSeenAt = readChatLastSeenAt.get(chat.id);
+    return !lastSeenAt || lastSeenAt < chat.last_message_at;
+  }
+
   function setDot(key, hasUnanswered) {
     if (navDots[key]) {
       navDots[key].hidden = !hasUnanswered;
@@ -601,6 +619,7 @@
 
     function openChat(chat) {
       currentChat = chat;
+      readChatLastSeenAt.set(chat.id, chat.last_message_at);
       refs.titleEl.textContent = chat.team_name;
       refs.modeErrorEl.textContent = "";
       refs.modeSelect.value = chat.mode;
@@ -748,7 +767,7 @@
         return;
       }
       supportBrowser.renderList(data.chats, "Чатов техподдержки пока нет");
-      setDot("support", data.chats.some((chat) => chat.needs_reply));
+      setDot("support", data.chats.some(isChatUnreadByOperator));
     } catch (err) {
       supportBrowser.renderList([], "Не удалось загрузить чаты");
     }
@@ -1229,7 +1248,7 @@
 
         const supportData = await responses[2].json();
         if (supportData.status === "ok") {
-          const needsReplyChats = supportData.chats.filter((chat) => chat.needs_reply);
+          const needsReplyChats = supportData.chats.filter(isChatUnreadByOperator);
           setDot("support", needsReplyChats.length > 0);
           syncPendingBanners("support-chat", needsReplyChats, knownNeedsReplySupportChatIds, (chat) => ({
             text: `Новое сообщение в техподдержку: ${chat.team_name}`,
@@ -1242,7 +1261,7 @@
 
         const dialogueChatsData = await responses[3].json();
         if (dialogueChatsData.status === "ok") {
-          const needsReplyChats = dialogueChatsData.chats.filter((chat) => chat.needs_reply);
+          const needsReplyChats = dialogueChatsData.chats.filter(isChatUnreadByOperator);
           setDot("dialogues", needsReplyChats.length > 0);
           syncPendingBanners("dialogue-chat", needsReplyChats, knownNeedsReplyDialogueChatIds, (chat) => ({
             text: `Новое сообщение в диалоге: ${chat.team_name}`,

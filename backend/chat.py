@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from supabase_client import get_supabase_client, retry_on_transient_error
+from supabase_client import get_supabase_client
 
 CHAT_MODES = ("scripted", "operator", "gpt", "muted")
 TEAM_SENDABLE_MODES = ("operator", "gpt")
@@ -107,21 +107,19 @@ def trigger_scripted_dialogue(team_id: str, character_id: str) -> None:
     увидеть. Оператор может позже вручную переключить режим обратно через
     dropdown в админке, discovered при этом не откатывается."""
     client = get_supabase_client()
-    chat_rows = retry_on_transient_error(
-        lambda: client.table("chats")
+    chat_rows = (
+        client.table("chats")
         .select("id")
         .eq("team_id", team_id)
         .eq("character_id", character_id)
         .execute()
-    ).data
+        .data
+    )
     if not chat_rows:
         return
-    retry_on_transient_error(
-        lambda: client.table("chats")
-        .update({"mode": "scripted", "discovered": True})
-        .eq("id", chat_rows[0]["id"])
-        .execute()
-    )
+    client.table("chats").update({"mode": "scripted", "discovered": True}).eq(
+        "id", chat_rows[0]["id"]
+    ).execute()
 
 
 def _get_own_chat(client, chat_id: str, team_id: str) -> dict:

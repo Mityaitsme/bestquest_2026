@@ -37,7 +37,9 @@
 
     <header class="app-header">
       <span class="app-header__team" id="app-team-name"></span>
-      <button type="button" class="app-header__logout" id="logout-button" aria-label="Выйти">&#128682;</button>
+      <button type="button" class="app-header__logout" id="logout-button" aria-label="Выйти">
+        <img src="{{ url_for('static', filename='img/logout.png') }}" alt="" class="app-header__logout-icon">
+      </button>
     </header>
 
     <main class="app-content">
@@ -97,8 +99,8 @@
             <input type="text" class="dialer-display password-input" id="password-display" placeholder="Ввод..." autocomplete="off">
             <div class="keypad" id="password-keypad"></div>
             <div class="password-actions">
-              <button type="button" id="password-submit" class="password-actions__btn password-actions__submit" aria-label="Ввести">&#9166;</button>
               <button type="button" id="call-end" class="password-actions__btn password-actions__end" aria-label="Сбросить">&#128222;</button>
+              <button type="button" id="password-submit" class="password-actions__btn password-actions__submit" aria-label="Ввести">&#9166;</button>
             </div>
           </div>
         </div>

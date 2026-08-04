@@ -36,7 +36,9 @@
 
     <header class="app-header">
       <span class="app-header__team" id="admin-header-name"></span>
-      <button type="button" class="app-header__logout" id="admin-logout-button" aria-label="Выйти">&#128682;</button>
+      <button type="button" class="app-header__logout" id="admin-logout-button" aria-label="Выйти">
+        <img src="{{ url_for('static', filename='img/logout.png') }}" alt="" class="app-header__logout-icon">
+      </button>
     </header>
 
     <main class="app-content">

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from chat import trigger_scripted_dialogue
-from supabase_client import get_supabase_client, retry_on_transient_error
+from supabase_client import get_supabase_client
 
 VISIBLE_STATUSES = ("available", "completed")
 CompletionMethod = Literal["actor", "answer", "checkbox", "manual_review"]
@@ -162,12 +162,13 @@ def _fire_dialogue_triggers(client, team_id: str, stage_id: str) -> None:
     """Автотриггер сценарного диалога (см. import_content.py: ключ этапа
     triggers_scripted_dialogue) — этап при выполнении сам переключает чат
     с указанным персонажем в режим scripted, без ручного шага оператора."""
-    triggers = retry_on_transient_error(
-        lambda: client.table("stage_dialogue_triggers")
+    triggers = (
+        client.table("stage_dialogue_triggers")
         .select("character_id")
         .eq("stage_id", stage_id)
         .execute()
-    ).data
+        .data
+    )
     for trigger in triggers:
         trigger_scripted_dialogue(team_id, trigger["character_id"])
 
@@ -192,31 +193,26 @@ def complete_checkbox_stage(team_id: str, stage_id: str) -> None:
 
 def _unlock_dependents(team_id: str, stage_id: str) -> None:
     """После выполнения stage_id проверить всех "потомков" и открыть тех, у кого
-    все предпосылки (AND) теперь выполнены командой.
-
-    Каждый шаг обёрнут в retry_on_transient_error: это цикл из нескольких
-    независимых запросов, и одиночный сетевой обрыв посреди него раньше мог
-    оставить часть веток графа "недоразблокированными" без единой видимой
-    команде или админу ошибки — см. комментарий в supabase_client.py."""
+    все предпосылки (AND) теперь выполнены командой."""
     client = get_supabase_client()
 
-    dependent_edges = retry_on_transient_error(
-        lambda: client.table("stage_edges").select("to_stage_id").eq("from_stage_id", stage_id).execute()
+    dependent_edges = (
+        client.table("stage_edges").select("to_stage_id").eq("from_stage_id", stage_id).execute()
     )
 
     for edge in dependent_edges.data:
         dependent_stage_id = edge["to_stage_id"]
 
-        prerequisites = retry_on_transient_error(
-            lambda: client.table("stage_edges")
+        prerequisites = (
+            client.table("stage_edges")
             .select("from_stage_id")
             .eq("to_stage_id", dependent_stage_id)
             .execute()
         )
         prerequisite_ids = [row["from_stage_id"] for row in prerequisites.data]
 
-        progress_rows = retry_on_transient_error(
-            lambda: client.table("team_stage_progress")
+        progress_rows = (
+            client.table("team_stage_progress")
             .select("status")
             .eq("team_id", team_id)
             .in_("stage_id", prerequisite_ids)
@@ -227,8 +223,6 @@ def _unlock_dependents(team_id: str, stage_id: str) -> None:
         )
 
         if all_completed:
-            retry_on_transient_error(
-                lambda: client.table("team_stage_progress").update({"status": "available"}).eq(
-                    "team_id", team_id
-                ).eq("stage_id", dependent_stage_id).eq("status", "locked").execute()
-            )
+            client.table("team_stage_progress").update({"status": "available"}).eq(
+                "team_id", team_id
+            ).eq("stage_id", dependent_stage_id).eq("status", "locked").execute()
