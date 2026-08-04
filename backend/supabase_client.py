@@ -2,9 +2,48 @@
 
 from __future__ import annotations
 
+import time
+from typing import Callable, TypeVar
+
+import httpx
 from supabase import Client, create_client
 
 from config import load_config
+
+T = TypeVar("T")
+
+RETRY_ATTEMPTS = 3
+RETRY_DELAY_SECONDS = 0.3
+
+
+def retry_on_transient_error(call: Callable[[], T], attempts: int = RETRY_ATTEMPTS) -> T:
+    """Выполнить один Supabase-вызов (call = лямбда с одним .execute()) с
+    повтором при разрыве соединения (httpx.TransportError — включает
+    ReadError/ConnectError и т.п., см. get_supabase_client() ниже).
+
+    Свежий клиент на каждый вызов (см. ниже) убрал почти все такие сбои, но
+    не все до единого — редкий одиночный обрыв всё ещё возможен. Опасны не
+    отдельные вызовы (тогда просто упадёт вся операция, ничего не изменив),
+    а ПОСЛЕДОВАТЕЛЬНОСТИ из нескольких вызовов (разблокировка следующих
+    этапов графа, автотриггер сценария, отбивка в техподдержку): если упал
+    вызов номер 2 из 3, первый уже закоммичен, а до третьего дело не дошло —
+    получается "наполовину применённое" состояние без единой видимой ошибки,
+    кроме 500 в ответе. Подтверждено на практике: у одной из тестовых команд
+    после выполнения "Знакомство" открылась только одна из двух параллельных
+    веток графа, хотя обе требуют только его — вторая застряла в 'locked'
+    именно из-за обрыва посреди цикла _unlock_dependents(). Используется
+    только на шагах, где повтор безопасен (нет предусловий по статусу,
+    которые уже могли перестать выполняться)."""
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            return call()
+        except httpx.TransportError as exc:
+            last_error = exc
+            if attempt < attempts - 1:
+                time.sleep(RETRY_DELAY_SECONDS * (attempt + 1))
+    assert last_error is not None
+    raise last_error
 
 
 def get_supabase_client() -> Client:

@@ -8,11 +8,13 @@
     manual_review: "на проверку",
   };
 
+  // Команда не должна видеть внутреннюю механику режимов — только "на связи
+  // или нет". muted единственный, где персонаж реально не отвечает.
   const CHAT_MODE_LABELS = {
-    scripted: "сценарий",
+    scripted: "онлайн",
     operator: "онлайн",
     gpt: "онлайн",
-    muted: "тихо",
+    muted: "оффлайн",
   };
 
   const FETCH_RETRY_ATTEMPTS = 3;
@@ -90,6 +92,18 @@
   let allTasks = [];
   let taskView = "available";
   let tasksRequestId = 0;
+  let lastTasksSignature = null;
+
+  // Только stage_id+status - если ни один статус не поменялся, перерисовывать
+  // список незачем (см. loadTasks(): без этой проверки фоновый опрос каждые
+  // 10с полностью пересобирал DOM, стирая открытую карточку с уже введённым,
+  // но ещё не отправленным ответом - выглядело как "форма сама закрывается").
+  function tasksSignature(tasks) {
+    return tasks
+      .map((t) => `${t.stage_id}:${t.status}`)
+      .sort()
+      .join(",");
+  }
   let knownAvailableStageIds = new Set();
   let hasRenderedTasksOnce = false;
 
@@ -944,7 +958,11 @@
       }
       if (data.status === "ok") {
         allTasks = data.tasks;
-        renderTasks();
+        const signature = tasksSignature(data.tasks);
+        if (signature !== lastTasksSignature) {
+          lastTasksSignature = signature;
+          renderTasks();
+        }
       }
     } catch (err) {
       if (requestId !== tasksRequestId) {
@@ -970,15 +988,26 @@
   const passwordSubmitBtn = document.getElementById("password-submit");
   const callEndButton = document.getElementById("call-end");
 
+  const callVoiceBarsEl = document.getElementById("call-voice-bars");
+
   const KEYPAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
   const CALL_OUTCOME_MESSAGES = {
     nonexistent: "Такого номера не существует.",
     unavailable: "Абонент недоступен.",
     prank: "…что-то пошло не так с этим номером.",
   };
+  const FAILED_CALL_RESET_MS = 5000;
+  const RINGTONE_URL = "/static/audio/ringtone.mp3";
+  const RING_COUNT = 3;
 
   let dialedNumber = "";
   let currentPhaseId = null;
+  // Финальная фаза звонка (после всех паролей) requires_password=false, но
+  // клавиатуру и поле ввода по просьбе оставляем на экране — просто "Ввести"
+  // в этом состоянии ничего не отправляет на сервер (там бы это было ошибкой).
+  let currentPhaseRequiresPassword = false;
+  let failedCallResetTimer = null;
+  let activeRingAudio = null;
 
   function buildKeypad(container, onPress) {
     container.innerHTML = "";
@@ -1002,55 +1031,107 @@
     dialerDisplayEl.textContent = dialedNumber;
   });
 
+  function stopRingtone() {
+    if (activeRingAudio) {
+      activeRingAudio.pause();
+      activeRingAudio = null;
+    }
+  }
+
   function resetToDialer() {
+    if (failedCallResetTimer) {
+      clearTimeout(failedCallResetTimer);
+      failedCallResetTimer = null;
+    }
+    stopRingtone();
     dialedNumber = "";
     dialerDisplayEl.textContent = "";
     currentPhaseId = null;
+    currentPhaseRequiresPassword = false;
     callViewEl.hidden = true;
     dialerViewEl.hidden = false;
   }
 
   function renderCallAudio(audioUrl) {
     callAudioEl.innerHTML = "";
+    callVoiceBarsEl.hidden = !audioUrl;
     if (!audioUrl) {
       return;
     }
     // Реальная аудиозапись хранится в Storage и приходит настоящей ссылкой;
     // для фаз, для которых контент-автор ещё не записал звук, audio_url —
-    // просто произвольная строка, показываем её как текст-заглушку.
+    // просто произвольная строка-заглушка. В обоих случаях команда видит
+    // только "палочки" — ни имени файла, ни того, что это вообще mp3.
     if (/^https?:\/\//.test(audioUrl)) {
       const audio = document.createElement("audio");
-      audio.controls = true;
       audio.autoplay = true;
       audio.src = audioUrl;
+      audio.hidden = true;
       callAudioEl.appendChild(audio);
-    } else {
-      callAudioEl.textContent = `🔊 ${audioUrl}`;
     }
   }
 
+  // 3 гудка перед тем, как звонок "поднимут" и включится основное аудио —
+  // ringtone.mp3 нужно положить в backend/static/audio/. Если файла ещё
+  // нет или автоплей заблокирован браузером, просто пропускаем гудки.
+  function playRingtoneThen(callback) {
+    let playsLeft = RING_COUNT;
+    const ring = new Audio(RINGTONE_URL);
+    activeRingAudio = ring;
+
+    function finish() {
+      if (activeRingAudio === ring) {
+        activeRingAudio = null;
+      }
+      callback();
+    }
+
+    ring.addEventListener("ended", () => {
+      playsLeft -= 1;
+      if (playsLeft > 0) {
+        ring.currentTime = 0;
+        ring.play().catch(finish);
+      } else {
+        finish();
+      }
+    });
+    ring.play().catch(finish);
+  }
+
+  function revealConnectedCall(data) {
+    if (callViewEl.hidden) {
+      return; // сбросили звонок, пока играли гудки - не показывать то, что уже неактуально
+    }
+    currentPhaseId = data.phase_id;
+    currentPhaseRequiresPassword = !!data.requires_password;
+    callStatusEl.textContent = "";
+    renderCallAudio(data.audio_url);
+    passwordSectionEl.hidden = false;
+  }
+
   function showCallResult(data) {
+    if (failedCallResetTimer) {
+      clearTimeout(failedCallResetTimer);
+      failedCallResetTimer = null;
+    }
     dialerViewEl.hidden = true;
     callViewEl.hidden = false;
     passwordSectionEl.hidden = true;
     passwordDisplayEl.value = "";
+    renderCallAudio("");
 
     if (!data.connected) {
+      // Без кнопок - через 5 секунд сама возвращается на экран набора.
       callStatusEl.textContent = data.outcome
         ? CALL_OUTCOME_MESSAGES[data.outcome] || "Звонок сброшен."
         : "Звонок сброшен.";
-      renderCallAudio("");
       currentPhaseId = null;
+      failedCallResetTimer = setTimeout(resetToDialer, FAILED_CALL_RESET_MS);
       return;
     }
 
-    currentPhaseId = data.phase_id;
-    callStatusEl.textContent = "Воспроизводится аудио:";
-    renderCallAudio(data.audio_url);
-
-    if (data.requires_password) {
-      passwordSectionEl.hidden = false;
-    }
+    callStatusEl.textContent = "Соединение…";
+    playRingtoneThen(() => revealConnectedCall(data));
   }
 
   dialerCallBtn.addEventListener("click", async () => {
@@ -1080,6 +1161,9 @@
   });
 
   passwordSubmitBtn.addEventListener("click", async () => {
+    if (!currentPhaseRequiresPassword) {
+      return; // финальная фаза - клавиатура на экране, но вводить уже нечего
+    }
     const password = passwordDisplayEl.value.trim();
     if (!currentPhaseId || !password) {
       return;

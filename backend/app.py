@@ -14,6 +14,7 @@ from chat import (
     ChatError,
     discover_chat,
     get_character_id_for_chat,
+    list_all_character_chats_overview,
     list_character_chats_overview,
     list_characters,
     list_messages,
@@ -419,6 +420,14 @@ def create_app() -> Flask:
         if denied:
             return denied
         return jsonify(status="ok", chats=list_support_chats_overview())
+
+    @app.get("/admin/dialogue-chats")
+    def admin_list_all_dialogue_chats() -> ResponseReturnValue:
+        """Для поллинга точки/баннера "Диалоги" — см. list_all_character_chats_overview."""
+        denied = require_operator()
+        if denied:
+            return denied
+        return jsonify(status="ok", chats=list_all_character_chats_overview())
 
     @app.get("/admin/characters")
     def admin_list_characters() -> ResponseReturnValue:

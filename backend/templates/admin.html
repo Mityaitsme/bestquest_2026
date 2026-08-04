@@ -36,7 +36,7 @@
 
     <header class="app-header">
       <span class="app-header__team" id="admin-header-name"></span>
-      <button type="button" class="app-header__logout" id="admin-logout-button" aria-label="Выйти">&#10162;</button>
+      <button type="button" class="app-header__logout" id="admin-logout-button" aria-label="Выйти">&#128682;</button>
     </header>
 
     <main class="app-content">
@@ -162,7 +162,10 @@
         <span>Техподдержка</span>
       </button>
       <button type="button" class="bottom-nav__btn" id="admin-tab-dialogues" aria-selected="false" hidden>
-        <span class="bottom-nav__icon" aria-hidden="true">&#128172;</span>
+        <span class="bottom-nav__icon-wrap">
+          <span class="bottom-nav__icon" aria-hidden="true">&#128172;</span>
+          <span class="bottom-nav__dot" id="admin-tab-dialogues-dot" hidden></span>
+        </span>
         <span>Диалоги</span>
       </button>
       <button type="button" class="bottom-nav__btn" id="admin-tab-reviews" aria-selected="false">

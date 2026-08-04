@@ -219,6 +219,14 @@
 
 /* ---- Admin: Техподдержка / Диалоги — chat browsing across all teams ---- */
 
+/* flex:1/min-height:0 — чтобы .chat-detail внутри мог растянуться на всю
+   высоту и прижать строку ввода к низу (см. main.css: .app-content). */
+#admin-panel-support,
+#admin-panel-dialogues {
+  flex: 1;
+  min-height: 0;
+}
+
 #admin-support-list-view,
 #admin-dialogues-list-view {
   display: flex;

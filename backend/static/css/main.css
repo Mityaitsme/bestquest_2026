@@ -320,11 +320,29 @@ button {
   background: var(--border);
 }
 
+/* display:flex обязателен — иначе flex:1/min-height:0 у #panel-chat и
+   #panel-calls (и их админ-аналогов в admin.css) ничего не делают, т.к. эти
+   свойства работают только у детей flex-контейнера. Без этого чат не
+   растягивался на всю высоту и поле ввода не прижималось к низу — оно просто
+   шло сразу после последнего сообщения, где бы то ни было. */
 .app-content {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   padding: var(--space-4) var(--space-4) var(--space-6);
   -webkit-overflow-scrolling: touch;
+}
+
+.app-content > .panel {
+  flex-shrink: 0;
+}
+
+.app-content > #panel-chat,
+.app-content > #panel-calls {
+  flex: 1;
+  min-height: 0;
 }
 
 .panel {
@@ -971,15 +989,46 @@ button {
 }
 
 .call-view__audio {
-  color: var(--text-muted);
-  font-size: 14px;
-  text-align: center;
   max-width: 280px;
 }
 
-.call-view__audio audio {
-  width: 100%;
-  max-width: 280px;
+/* Индикатор "собеседник говорит" вместо подписи с именем аудиофайла —
+   ни имени, ни того, что это вообще mp3, команда видеть не должна. */
+.call-voice-bars {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+}
+
+.call-voice-bars span {
+  width: 5px;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent-2);
+  animation: call-voice-bar 0.9s ease-in-out infinite;
+}
+
+.call-voice-bars span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.call-voice-bars span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.call-voice-bars span:nth-child(4) {
+  animation-delay: 0.45s;
+}
+
+@keyframes call-voice-bar {
+  0%, 100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
 }
 
 .call-password {
@@ -987,6 +1036,47 @@ button {
   flex-direction: column;
   align-items: center;
   gap: var(--space-4);
+}
+
+/* "5й ряд" круглых кнопок под клавиатурой пароля — те же размеры, что и
+   .keypad__btn, чтобы визуально продолжать сетку набора номера. */
+.password-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-4);
+}
+
+.password-actions__btn {
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.password-actions__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.password-actions__submit {
+  background: var(--accent);
+}
+
+.password-actions__submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.password-actions__end {
+  background: var(--danger);
+  transform: rotate(135deg);
+}
+
+.password-actions__end:hover {
+  transform: rotate(135deg) translateY(-1px);
 }
 
 /* Поле пароля — настоящий input (можно ввести слово с клавиатуры устройства),

@@ -37,7 +37,7 @@
 
     <header class="app-header">
       <span class="app-header__team" id="app-team-name"></span>
-      <button type="button" class="app-header__logout" id="logout-button" aria-label="Выйти">&#10162;</button>
+      <button type="button" class="app-header__logout" id="logout-button" aria-label="Выйти">&#128682;</button>
     </header>
 
     <main class="app-content">
@@ -88,15 +88,19 @@
 
         <div id="call-view" class="call-view" hidden>
           <p class="call-view__status" id="call-status"></p>
-          <p class="call-view__audio" id="call-audio"></p>
+          <div class="call-voice-bars" id="call-voice-bars" hidden aria-hidden="true">
+            <span></span><span></span><span></span><span></span>
+          </div>
+          <div class="call-view__audio" id="call-audio"></div>
 
           <div id="call-password-section" class="call-password" hidden>
-            <input type="text" class="dialer-display password-input" id="password-display" placeholder="Пароль" autocomplete="off">
+            <input type="text" class="dialer-display password-input" id="password-display" placeholder="Ввод..." autocomplete="off">
             <div class="keypad" id="password-keypad"></div>
-            <button type="button" id="password-submit" class="btn-primary">Ввести</button>
+            <div class="password-actions">
+              <button type="button" id="password-submit" class="password-actions__btn password-actions__submit" aria-label="Ввести">&#9166;</button>
+              <button type="button" id="call-end" class="password-actions__btn password-actions__end" aria-label="Сбросить">&#128222;</button>
+            </div>
           </div>
-
-          <button type="button" id="call-end" class="btn-secondary call-view__end">Сбросить</button>
         </div>
       </section>
     </main>

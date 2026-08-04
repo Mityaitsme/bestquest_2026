@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from supabase_client import get_supabase_client
+from supabase_client import get_supabase_client, retry_on_transient_error
 from tasks import mark_stage_completed
 
 PHOTO_BUCKET = "manual-review-photos"
@@ -162,14 +162,13 @@ def _notify_team_of_review_decision(
     ответов техподдержки, но sender_type=system, т.к. это не оператор
     печатает вручную, а автоматическое следствие его решения) при любом
     решении, с комментарием или без."""
-    support_chat = (
-        client.table("chats")
+    support_chat = retry_on_transient_error(
+        lambda: client.table("chats")
         .select("id")
         .eq("team_id", team_id)
         .eq("chat_type", "support")
         .execute()
-        .data
-    )
+    ).data
     if not support_chat:
         return
 
@@ -178,12 +177,16 @@ def _notify_team_of_review_decision(
     if comment:
         text += f" {comment}"
 
-    client.table("messages").insert(
-        {
-            "chat_id": support_chat[0]["id"],
-            "sender_type": "system",
-            "sender_admin_id": admin_id,
-            "content": text,
-            "message_kind": "support_comment",
-        }
-    ).execute()
+    retry_on_transient_error(
+        lambda: client.table("messages")
+        .insert(
+            {
+                "chat_id": support_chat[0]["id"],
+                "sender_type": "system",
+                "sender_admin_id": admin_id,
+                "content": text,
+                "message_kind": "support_comment",
+            }
+        )
+        .execute()
+    )

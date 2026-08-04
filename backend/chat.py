@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from supabase_client import get_supabase_client
+from supabase_client import get_supabase_client, retry_on_transient_error
 
 CHAT_MODES = ("scripted", "operator", "gpt", "muted")
 TEAM_SENDABLE_MODES = ("operator", "gpt")
@@ -107,19 +107,21 @@ def trigger_scripted_dialogue(team_id: str, character_id: str) -> None:
     увидеть. Оператор может позже вручную переключить режим обратно через
     dropdown в админке, discovered при этом не откатывается."""
     client = get_supabase_client()
-    chat_rows = (
-        client.table("chats")
+    chat_rows = retry_on_transient_error(
+        lambda: client.table("chats")
         .select("id")
         .eq("team_id", team_id)
         .eq("character_id", character_id)
         .execute()
-        .data
-    )
+    ).data
     if not chat_rows:
         return
-    client.table("chats").update({"mode": "scripted", "discovered": True}).eq(
-        "id", chat_rows[0]["id"]
-    ).execute()
+    retry_on_transient_error(
+        lambda: client.table("chats")
+        .update({"mode": "scripted", "discovered": True})
+        .eq("id", chat_rows[0]["id"])
+        .execute()
+    )
 
 
 def _get_own_chat(client, chat_id: str, team_id: str) -> dict:
@@ -263,6 +265,14 @@ def list_character_chats_overview(character_id: str) -> list[dict]:
     командами сразу (выбор персонажа — на фронтенде)."""
     client = get_supabase_client()
     return _chats_overview(client, "character", character_id)
+
+
+def list_all_character_chats_overview() -> list[dict]:
+    """Для поллинга точки/баннера 'Диалоги' — чаты персонажей ВСЕХ команд по
+    ВСЕМ персонажам сразу (в отличие от list_character_chats_overview выше,
+    не привязано к персонажу, выбранному сейчас в интерфейсе)."""
+    client = get_supabase_client()
+    return _chats_overview(client, "character")
 
 
 def list_messages_admin(chat_id: str) -> list[dict]:

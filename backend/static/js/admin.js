@@ -98,6 +98,7 @@
   // баннеров ниже) — так что считается и обновляется отдельно от них.
   const navDots = {
     support: document.getElementById("admin-tab-support-dot"),
+    dialogues: document.getElementById("admin-tab-dialogues-dot"),
     reviews: document.getElementById("admin-tab-reviews-dot"),
     approvals: document.getElementById("admin-tab-approvals-dot"),
   };
@@ -368,6 +369,11 @@
           error.textContent = data.detail || "Не получилось отметить";
           confirmButton.disabled = false;
           cancelButton.disabled = false;
+          // Не выходим сразу: сервер мог успеть закоммитить сам статус
+          // раньше, чем упал на одном из следующих шагов (разблокировка,
+          // автотриггер сценария) - loadTasks() покажет как оно на самом
+          // деле, а не то, что этап якобы остался прежним.
+          loadTasks();
           return;
         }
         loadTasks();
@@ -375,6 +381,7 @@
         error.textContent = "Не удалось связаться с сервером";
         confirmButton.disabled = false;
         cancelButton.disabled = false;
+        loadTasks();
       }
     });
 
@@ -1108,12 +1115,16 @@
   let pendingPollTimer = null;
   const knownPendingReviewIds = new Set();
   const knownPendingApprovalIds = new Set();
+  const knownNeedsReplySupportChatIds = new Set();
+  const knownNeedsReplyDialogueChatIds = new Set();
   const bannerElByKey = new Map();
 
   function startPendingItemsPolling() {
     stopPendingItemsPolling();
     knownPendingReviewIds.clear();
     knownPendingApprovalIds.clear();
+    knownNeedsReplySupportChatIds.clear();
+    knownNeedsReplyDialogueChatIds.clear();
     pollPendingItems();
     pendingPollTimer = setInterval(pollPendingItems, PENDING_POLL_INTERVAL_MS);
   }
@@ -1127,12 +1138,19 @@
 
   async function pollPendingItems() {
     // Актёру доступна только "Проверка" — опрашиваем только её. Оператору
-    // ещё "Блок-посты" и "Техподдержка" (для кружка, без баннера).
+    // ещё "Блок-посты", "Техподдержка" и "Диалоги" (у всех троих теперь и
+    // точка, и баннер на новое непрочитанное — раньше баннер был только у
+    // заявок/блок-постов, а у чатов только точка, безо всякого уведомления
+    // о том, что именно появилось новое сообщение).
     const isOperator = currentRole === "operator";
     try {
       const requests = [fetch("/admin/reviews")];
       if (isOperator) {
-        requests.push(fetch("/admin/dialogue/approvals"), fetch("/admin/support-chats"));
+        requests.push(
+          fetch("/admin/dialogue/approvals"),
+          fetch("/admin/support-chats"),
+          fetch("/admin/dialogue-chats")
+        );
       }
       const responses = await Promise.all(requests);
       if (responses.some((response) => response.status === 401)) {
@@ -1167,7 +1185,28 @@
 
         const supportData = await responses[2].json();
         if (supportData.status === "ok") {
-          setDot("support", supportData.chats.some((chat) => chat.needs_reply));
+          const needsReplyChats = supportData.chats.filter((chat) => chat.needs_reply);
+          setDot("support", needsReplyChats.length > 0);
+          syncPendingBanners("support-chat", needsReplyChats, knownNeedsReplySupportChatIds, (chat) => ({
+            text: `Новое сообщение в техподдержку: ${chat.team_name}`,
+            onClick: () => {
+              setSection("support");
+              loadSupportChats();
+            },
+          }));
+        }
+
+        const dialogueChatsData = await responses[3].json();
+        if (dialogueChatsData.status === "ok") {
+          const needsReplyChats = dialogueChatsData.chats.filter((chat) => chat.needs_reply);
+          setDot("dialogues", needsReplyChats.length > 0);
+          syncPendingBanners("dialogue-chat", needsReplyChats, knownNeedsReplyDialogueChatIds, (chat) => ({
+            text: `Новое сообщение в диалоге: ${chat.team_name}`,
+            onClick: () => {
+              setSection("dialogues");
+              loadCharactersAndChats();
+            },
+          }));
         }
       }
     } catch (err) {
