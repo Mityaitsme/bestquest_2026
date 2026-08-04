@@ -60,6 +60,7 @@
     }
     sessionExpiredHandled = true;
     stopMessagePolling();
+    stopTaskPolling();
     showToast("Сессия сброшена — похоже, в этом браузере вошли под другим аккаунтом. Перезагружаем…");
     setTimeout(() => window.location.reload(), 1800);
   }
@@ -121,10 +122,18 @@
   const chatSearchInput = document.getElementById("chat-search-input");
   const chatSearchButton = document.getElementById("chat-search-button");
   const chatSearchError = document.getElementById("chat-search-error");
+  const tabChatDot = document.getElementById("tab-chat-dot");
 
   let currentChat = null;
   let allChats = [];
   const unreadChatIds = new Set();
+
+  // Кружок у самой иконки "Чат" в нижней панели — есть хоть одно непрочитанное
+  // где угодно, отдельно от точки у конкретного чата в списке (её ставит
+  // renderChatList на основе того же unreadChatIds).
+  function updateChatTabDot() {
+    tabChatDot.hidden = unreadChatIds.size === 0;
+  }
 
   function setTab(tab) {
     for (const key of Object.keys(panels)) {
@@ -619,6 +628,7 @@
   function openChat(chat, name) {
     currentChat = chat;
     unreadChatIds.delete(chat.id);
+    updateChatTabDot();
     chatDetailTitle.textContent = name;
     chatListViewEl.hidden = true;
     chatDetailViewEl.hidden = false;
@@ -679,6 +689,26 @@
     }
   }
 
+  // Прогресс по задачам меняется со стороны админки (актёр отметил вручную,
+  // оператор принял ручную проверку) — без опроса список задач обновлялся
+  // бы только при полной перезагрузке страницы. loadTasks() уже защищён от
+  // гонки устаревших ответов через tasksRequestId, так что достаточно
+  // дёргать его по таймеру так же, как опрос сообщений.
+  const TASK_POLL_INTERVAL_MS = 10000;
+  let taskPollTimer = null;
+
+  function startTaskPolling() {
+    stopTaskPolling();
+    taskPollTimer = setInterval(loadTasks, TASK_POLL_INTERVAL_MS);
+  }
+
+  function stopTaskPolling() {
+    if (taskPollTimer) {
+      clearInterval(taskPollTimer);
+      taskPollTimer = null;
+    }
+  }
+
   async function pollNewMessages() {
     const since = lastMessagePollAt;
     try {
@@ -702,6 +732,7 @@
 
       for (const chatId of chatIdsWithNewMessages) {
         unreadChatIds.add(chatId);
+        updateChatTabDot();
         const chat = allChats.find((c) => c.id === chatId);
         const name = chat ? getChatDisplayName(chat) : "Чат";
         showToast(`Новое сообщение: ${name}`, () => {
@@ -1095,6 +1126,7 @@
       loadTasks();
       loadChats(); // заранее знаем имена чатов для тостов, даже если команда ещё не открывала вкладку "Чат"
       startMessagePolling();
+      startTaskPolling();
     },
   };
 })();

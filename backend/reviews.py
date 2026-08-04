@@ -140,25 +140,28 @@ def review_decision(
             completion_method="manual_review",
         )
 
-    if comment:
-        _notify_team_of_review_comment(
-            client,
-            team_id=review[0]["team_id"],
-            stage_title=review[0]["stages"]["title"] if review[0]["stages"] else "этап",
-            accept=accept,
-            comment=comment,
-            admin_id=admin_id,
-        )
+    _notify_team_of_review_decision(
+        client,
+        team_id=review[0]["team_id"],
+        stage_title=review[0]["stages"]["title"] if review[0]["stages"] else "этап",
+        accept=accept,
+        comment=comment,
+        admin_id=admin_id,
+    )
 
 
-def _notify_team_of_review_comment(
-    client, team_id: str, stage_title: str, accept: bool, comment: str, admin_id: str
+def _notify_team_of_review_decision(
+    client, team_id: str, stage_title: str, accept: bool, comment: Optional[str], admin_id: str
 ) -> None:
-    """Комментарий оператора к решению по проверке должен быть виден команде —
-    кладём его в чат техподдержки команды отдельным "служебным" сообщением
-    (message_kind=support_comment, тот же вид, что и у ручных ответов
-    техподдержки, но sender_type=system, т.к. это не оператор печатает вручную,
-    а автоматическое следствие его решения)."""
+    """Решение по проверке всегда должно быть видно команде — раньше
+    сообщение в техподдержку уходило только если оператор оставил
+    комментарий, и команда узнавала о принятой/отклонённой заявке только
+    перезагрузив страницу и увидев, что задача сама стала выполненной (или
+    не стала). Кладём "отбивку" в чат техподдержки отдельным "служебным"
+    сообщением (message_kind=support_comment, тот же вид, что и у ручных
+    ответов техподдержки, но sender_type=system, т.к. это не оператор
+    печатает вручную, а автоматическое следствие его решения) при любом
+    решении, с комментарием или без."""
     support_chat = (
         client.table("chats")
         .select("id")
@@ -171,12 +174,16 @@ def _notify_team_of_review_comment(
         return
 
     verdict = "принят" if accept else "отклонён"
+    text = f"Ответ по заданию «{stage_title}» {verdict}."
+    if comment:
+        text += f" {comment}"
+
     client.table("messages").insert(
         {
             "chat_id": support_chat[0]["id"],
             "sender_type": "system",
             "sender_admin_id": admin_id,
-            "content": f"Ответ по заданию «{stage_title}» {verdict}. {comment}",
+            "content": text,
             "message_kind": "support_comment",
         }
     ).execute()
