@@ -236,6 +236,75 @@ def _resolve_audio_url(client, audio: str) -> str:
     return client.storage.from_(AUDIO_BUCKET).get_public_url(audio)
 
 
+def _backfill_existing_teams(
+    client, character_slug_to_id: dict[str, str], character_start_node_id: dict[str, str]
+) -> None:
+    """Персонажа иногда добавляют в контент уже после того, как какие-то
+    команды успели зарегистрироваться — а seed_team_chats/
+    seed_team_dialogue_state (backend/chat.py, backend/dialogue.py)
+    выполняются только один раз, в момент регистрации команды. Без этого
+    шага у таких "старых" команд навсегда не появился бы чат с новым
+    персонажем — они не были бы видны в разделе "Диалоги" ни при каком
+    выборе персонажа, хотя сам персонаж существует и активен."""
+    team_ids = [row["id"] for row in client.table("teams").select("id").execute().data]
+    if not team_ids:
+        return
+
+    added_chats = 0
+    added_dialogue_states = 0
+    for slug, character_id in character_slug_to_id.items():
+        existing_team_ids = {
+            row["team_id"]
+            for row in client.table("chats")
+            .select("team_id")
+            .eq("character_id", character_id)
+            .execute()
+            .data
+        }
+        missing_team_ids = [team_id for team_id in team_ids if team_id not in existing_team_ids]
+        if missing_team_ids:
+            client.table("chats").insert(
+                [
+                    {"team_id": team_id, "character_id": character_id, "chat_type": "character"}
+                    for team_id in missing_team_ids
+                ]
+            ).execute()
+            added_chats += len(missing_team_ids)
+
+        start_node_id = character_start_node_id.get(slug)
+        if not start_node_id:
+            continue
+        existing_state_team_ids = {
+            row["team_id"]
+            for row in client.table("team_dialogue_state")
+            .select("team_id")
+            .eq("character_id", character_id)
+            .execute()
+            .data
+        }
+        missing_state_team_ids = [
+            team_id for team_id in team_ids if team_id not in existing_state_team_ids
+        ]
+        if missing_state_team_ids:
+            client.table("team_dialogue_state").insert(
+                [
+                    {
+                        "team_id": team_id,
+                        "character_id": character_id,
+                        "current_node_id": start_node_id,
+                    }
+                    for team_id in missing_state_team_ids
+                ]
+            ).execute()
+            added_dialogue_states += len(missing_state_team_ids)
+
+    if added_chats or added_dialogue_states:
+        print(
+            f"\nДозаполнено для уже зарегистрированных команд: {added_chats} чатов персонажей, "
+            f"{added_dialogue_states} состояний диалога."
+        )
+
+
 def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
     data = load_content(path)
     characters = data.get("characters", [])
@@ -267,6 +336,7 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
         character_slug_to_id[character["slug"]] = row["id"]
         print(f"персонаж: {character['slug']}")
 
+    character_start_node_id: dict[str, str] = {}
     for character in characters:
         dialogue = character.get("dialogue")
         if not dialogue:
@@ -294,6 +364,8 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
                 .data[0]
             )
             key_to_node_id[node["key"]] = row["id"]
+            if node.get("entry"):
+                character_start_node_id[character["slug"]] = row["id"]
 
         # Второй проход: node.next_node_id (для requires_all_options) и все опции.
         for node in nodes:
@@ -318,6 +390,8 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
                 ).execute()
 
         print(f"диалог персонажа '{character['slug']}': {len(nodes)} узлов")
+
+    _backfill_existing_teams(client, character_slug_to_id, character_start_node_id)
 
     slug_to_id: dict[str, str] = {}
     for stage in stages:

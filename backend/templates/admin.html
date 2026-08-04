@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Квест — админка{% endblock %}
+{% block title %}BestQuest — админка{% endblock %}
 
 {% block head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
@@ -10,8 +10,8 @@
 <main id="admin-root">
   <section id="admin-auth-screen" class="auth-screen fade-swap" hidden>
     <div class="auth-brand">
-      <div class="auth-brand__mark" aria-hidden="true">&#128274;</div>
-      <div class="auth-brand__title">Квест — админка</div>
+      <img class="auth-brand__mark" src="{{ url_for('static', filename='img/logo.png') }}" alt="BestQuest">
+      <div class="auth-brand__title">BestQuest — админка</div>
       <div class="auth-brand__subtitle">Войдите как оператор или актёр</div>
     </div>
 

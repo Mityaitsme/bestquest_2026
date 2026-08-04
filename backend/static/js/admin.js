@@ -20,6 +20,56 @@
     muted: "Тихо",
   };
 
+  const FETCH_RETRY_ATTEMPTS = 3;
+  const FETCH_RETRY_DELAY_MS = 400;
+
+  // См. аналогичный помощник в app.js: GET-запросы на чтение при временном
+  // сбое (сеть, недоступный на секунду Supabase) тихо повторяются ещё
+  // пару раз, прежде чем показать "не удалось загрузить". Только для
+  // чтения — мутации (POST) так не оборачиваем.
+  async function fetchJsonWithRetry(url, attempts = FETCH_RETRY_ATTEMPTS) {
+    let lastError;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try {
+        const response = await fetch(url);
+        if (response.status === 401) {
+          handleSessionExpired();
+          throw new Error("session-expired");
+        }
+        return await response.json();
+      } catch (err) {
+        lastError = err;
+        if (err.message === "session-expired") {
+          throw err; // сессии больше нет — повторять запрос бессмысленно
+        }
+        if (attempt < attempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, FETCH_RETRY_DELAY_MS * (attempt + 1)));
+        }
+      }
+    }
+    throw lastError;
+  }
+
+  // Cookie сессии одна на весь браузер: вход в другую роль (актёр/оператор/
+  // команда) в другой вкладке того же браузера тихо разлогинивает эту —
+  // запросы начинают падать с 401 без единой видимой ошибки. Вместо этого
+  // показываем явное сообщение и перезагружаем страницу, чтобы попасть на
+  // актуальный для этого браузера экран входа.
+  let sessionExpiredHandled = false;
+  function handleSessionExpired() {
+    if (sessionExpiredHandled) {
+      return;
+    }
+    sessionExpiredHandled = true;
+    stopPendingItemsPolling();
+    const banner = document.createElement("div");
+    banner.className = "admin-banner";
+    banner.textContent = "Сессия сброшена — похоже, в этом браузере вошли под другим аккаунтом. Перезагружаем…";
+    bannerContainerEl.appendChild(banner);
+    setTimeout(() => banner.classList.add("admin-banner--visible"), 20);
+    setTimeout(() => window.location.reload(), 1800);
+  }
+
   let currentRole = null;
 
   const appScreen = document.getElementById("admin-app-screen");
@@ -109,8 +159,7 @@
 
   async function loadTeams() {
     try {
-      const response = await fetch("/admin/teams");
-      const data = await response.json();
+      const data = await fetchJsonWithRetry("/admin/teams");
       if (data.status !== "ok") {
         teamListEmptyEl.hidden = false;
         teamListEmptyEl.textContent = "Не удалось загрузить команды";
@@ -188,8 +237,7 @@
     const teamId = currentTeam.team_id;
     const requestId = ++tasksRequestId;
     try {
-      const response = await fetch(`/admin/teams/${teamId}/tasks`);
-      const data = await response.json();
+      const data = await fetchJsonWithRetry(`/admin/teams/${teamId}/tasks`);
       if (requestId !== tasksRequestId) {
         return;
       }
@@ -374,8 +422,7 @@
     graphEmptyEl.hidden = true;
     graphSvgEl.innerHTML = "";
     try {
-      const response = await fetch(`/admin/teams/${currentTeam.team_id}/graph`);
-      const data = await response.json();
+      const data = await fetchJsonWithRetry(`/admin/teams/${currentTeam.team_id}/graph`);
       if (data.status !== "ok") {
         graphEmptyEl.hidden = false;
         graphEmptyEl.textContent = "Не удалось загрузить граф";
@@ -563,8 +610,7 @@
       const chatId = currentChat.id;
       refs.messagesEl.textContent = "Загрузка…";
       try {
-        const response = await fetch(`/admin/chats/${chatId}/messages`);
-        const data = await response.json();
+        const data = await fetchJsonWithRetry(`/admin/chats/${chatId}/messages`);
         if (!currentChat || currentChat.id !== chatId) {
           return;
         }
@@ -689,8 +735,7 @@
   async function loadSupportChats() {
     supportBrowser.showList();
     try {
-      const response = await fetch("/admin/support-chats");
-      const data = await response.json();
+      const data = await fetchJsonWithRetry("/admin/support-chats");
       if (data.status !== "ok") {
         supportBrowser.renderList([], "Не удалось загрузить чаты");
         return;
@@ -724,8 +769,7 @@
   async function loadCharactersAndChats() {
     dialoguesBrowser.showList();
     try {
-      const response = await fetch("/admin/characters");
-      const data = await response.json();
+      const data = await fetchJsonWithRetry("/admin/characters");
       if (data.status !== "ok" || data.characters.length === 0) {
         personaSelect.innerHTML = "";
         dialoguesBrowser.renderList([], "Персонажей пока нет");
@@ -751,8 +795,7 @@
       return;
     }
     try {
-      const response = await fetch(`/admin/characters/${characterId}/chats`);
-      const data = await response.json();
+      const data = await fetchJsonWithRetry(`/admin/characters/${characterId}/chats`);
       if (data.status !== "ok") {
         dialoguesBrowser.renderList([], "Не удалось загрузить чаты");
         return;
@@ -772,8 +815,7 @@
 
   async function loadReviews() {
     try {
-      const response = await fetch("/admin/reviews");
-      const data = await response.json();
+      const data = await fetchJsonWithRetry("/admin/reviews");
       if (data.status !== "ok") {
         reviewListEmptyEl.hidden = false;
         reviewListEmptyEl.textContent = "Не удалось загрузить заявки";
@@ -934,8 +976,7 @@
 
   async function loadApprovals() {
     try {
-      const response = await fetch("/admin/dialogue/approvals");
-      const data = await response.json();
+      const data = await fetchJsonWithRetry("/admin/dialogue/approvals");
       if (data.status !== "ok") {
         approvalListEmptyEl.hidden = false;
         approvalListEmptyEl.textContent = "Не удалось загрузить заявки";
@@ -1048,19 +1089,29 @@
   // здесь баннер обязан "висеть", пока оператор реально не примет решение —
   // поэтому снимаем его только когда элемент пропал из списка ожидающих
   // (решён этим или другим оператором) или сразу после успешного decide().
+  //
+  // Баннер показывается для ЛЮБОЙ заявки, которая сейчас в очереди, включая
+  // самый первый опрос сразу после входа — то есть и в ситуации "заявка
+  // появилась, пока оператор ещё не был залогинен, и он входит уже после
+  // этого" (стандартный сценарий при тестировании с одного устройства
+  // поочерёдным входом то командой, то админом). Раньше первый опрос после
+  // входа был специально исключён (чтобы не "заваливать" оператора баннерами
+  // про давно висящую очередь) — но это на практике означало, что баннер
+  // почти никогда не появлялся при таком сценарии тестирования, что
+  // противоречило самой идее "висит, пока не ответят". showPendingBanner
+  // сам не создаёт дубликат для уже показанного баннера, так что повторные
+  // опросы не заваливают экран.
 
   const bannerContainerEl = document.getElementById("admin-banner-container");
   const PENDING_POLL_INTERVAL_MS = 10000;
 
   let pendingPollTimer = null;
-  let hasPolledPendingOnce = false;
   const knownPendingReviewIds = new Set();
   const knownPendingApprovalIds = new Set();
   const bannerElByKey = new Map();
 
   function startPendingItemsPolling() {
     stopPendingItemsPolling();
-    hasPolledPendingOnce = false;
     knownPendingReviewIds.clear();
     knownPendingApprovalIds.clear();
     pollPendingItems();
@@ -1084,6 +1135,10 @@
         requests.push(fetch("/admin/dialogue/approvals"), fetch("/admin/support-chats"));
       }
       const responses = await Promise.all(requests);
+      if (responses.some((response) => response.status === 401)) {
+        handleSessionExpired();
+        return;
+      }
       const reviewsData = await responses[0].json();
 
       if (reviewsData.status === "ok") {
@@ -1115,8 +1170,6 @@
           setDot("support", supportData.chats.some((chat) => chat.needs_reply));
         }
       }
-
-      hasPolledPendingOnce = true;
     } catch (err) {
       // пропускаем цикл опроса - следующий тик попробует снова
     }
@@ -1125,15 +1178,13 @@
   function syncPendingBanners(kind, items, knownIds, describe) {
     const currentIds = new Set(items.map((item) => item.id));
 
-    // Баннер только для по-настоящему новых заявок — не при первом опросе
-    // сразу после входа, иначе оператора завалит баннерами про то, что и
-    // так уже который час висело в очереди.
-    if (hasPolledPendingOnce) {
-      for (const item of items) {
-        if (!knownIds.has(item.id)) {
-          const { text, onClick } = describe(item);
-          showPendingBanner(`${kind}:${item.id}`, text, onClick);
-        }
+    // Баннер для каждой заявки, которая сейчас в очереди — включая самый
+    // первый опрос после входа (см. комментарий выше). showPendingBanner не
+    // создаёт дубликат, если баннер для этого ключа уже показан.
+    for (const item of items) {
+      if (!knownIds.has(item.id)) {
+        const { text, onClick } = describe(item);
+        showPendingBanner(`${kind}:${item.id}`, text, onClick);
       }
     }
 

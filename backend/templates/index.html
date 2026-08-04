@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Квест — вход{% endblock %}
+{% block title %}BestQuest — вход{% endblock %}
 
 {% block content %}
 <main id="root">
   <section id="auth-screen" class="auth-screen fade-swap" hidden>
     <div class="auth-brand">
-      <div class="auth-brand__mark" aria-hidden="true">&#128274;</div>
-      <div class="auth-brand__title">Квест</div>
+      <img class="auth-brand__mark" src="{{ url_for('static', filename='img/logo.png') }}" alt="BestQuest">
+      <div class="auth-brand__title">BestQuest</div>
       <div class="auth-brand__subtitle">Войдите в аккаунт команды, чтобы продолжить</div>
     </div>
 

@@ -2,8 +2,8 @@
   "use strict";
 
   const COMPLETION_TYPE_LABELS = {
-    actor: "отмечает актёр",
-    answer: "введите ответ",
+    actor: "автоматически",
+    answer: "ответ",
     checkbox: "подтвердите",
     manual_review: "на проверку",
   };
@@ -14,6 +14,55 @@
     gpt: "онлайн",
     muted: "тихо",
   };
+
+  const FETCH_RETRY_ATTEMPTS = 3;
+  const FETCH_RETRY_DELAY_MS = 400;
+
+  // Обёртка над fetch для GET-запросов на чтение: если запрос не долетел или
+  // ответ не распарсился как JSON (сетевой сбой, временная ошибка сервера) —
+  // тихо повторяет попытку ещё пару раз с небольшой паузой, прежде чем
+  // отдать ошибку вызывающему коду. Только для чтения — запросы, меняющие
+  // данные (POST), так не оборачиваем, чтобы не повторить одно и то же
+  // действие дважды.
+  async function fetchJsonWithRetry(url, attempts = FETCH_RETRY_ATTEMPTS) {
+    let lastError;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try {
+        const response = await fetch(url);
+        if (response.status === 401) {
+          handleSessionExpired();
+          throw new Error("session-expired");
+        }
+        return await response.json();
+      } catch (err) {
+        lastError = err;
+        if (err.message === "session-expired") {
+          throw err; // сессии больше нет — повторять запрос бессмысленно
+        }
+        if (attempt < attempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, FETCH_RETRY_DELAY_MS * (attempt + 1)));
+        }
+      }
+    }
+    throw lastError;
+  }
+
+  // Если в этом же браузере (в другой вкладке) вошли под другой командой
+  // или админом — сессия (cookie) на весь браузер одна, и эта вкладка
+  // молча перестаёт быть залогинена. Раньше это выглядело как "всё вдруг
+  // перестало грузиться без единой ошибки на экране" — теперь вместо
+  // молчаливого провала показываем понятное сообщение и перезагружаем
+  // страницу, чтобы попасть на актуальный для этого браузера экран входа.
+  let sessionExpiredHandled = false;
+  function handleSessionExpired() {
+    if (sessionExpiredHandled) {
+      return;
+    }
+    sessionExpiredHandled = true;
+    stopMessagePolling();
+    showToast("Сессия сброшена — похоже, в этом браузере вошли под другим аккаунтом. Перезагружаем…");
+    setTimeout(() => window.location.reload(), 1800);
+  }
 
   const appScreen = document.getElementById("app-screen");
   const teamNameEl = document.getElementById("app-team-name");
@@ -72,6 +121,7 @@
 
   let currentChat = null;
   let allChats = [];
+  const unreadChatIds = new Set();
 
   function setTab(tab) {
     for (const key of Object.keys(panels)) {
@@ -236,7 +286,7 @@
     if (stage.completion_type === "answer") {
       const wrap = document.createElement("div");
       wrap.className = "task-action task-fields";
-      wrap.dataset.loaded = "false";
+      wrap.dataset.loadState = "idle";
 
       return {
         element: wrap,
@@ -336,27 +386,34 @@
   }
 
   async function loadAnswerFields(stageId, container) {
-    if (container.dataset.loaded === "true") {
+    // Состояние загрузки хранится отдельно от результата: если запрос
+    // сорвался (временный сбой сети/сервера), состояние должно вернуться в
+    // "idle", а не застрять в "уже загружено" навсегда — иначе повторное
+    // открытие/закрытие той же карточки просто молча показывало бы старую
+    // ошибку и никогда не пробовало бы загрузить поля ещё раз.
+    if (container.dataset.loadState === "loading" || container.dataset.loadState === "loaded") {
       return;
     }
-    container.dataset.loaded = "true";
+    container.dataset.loadState = "loading";
     container.textContent = "Загрузка…";
 
     try {
-      const response = await fetch(`/tasks/${stageId}/fields`);
-      const data = await response.json();
+      const data = await fetchJsonWithRetry(`/tasks/${stageId}/fields`);
       if (data.status !== "ok") {
-        container.textContent = data.detail || "Не удалось загрузить поля";
+        container.dataset.loadState = "idle";
+        container.textContent = (data.detail || "Не удалось загрузить поля") + " — откройте задачу ещё раз, чтобы повторить";
         return;
       }
 
+      container.dataset.loadState = "loaded";
       container.innerHTML = "";
       const fields = [...data.fields].sort((a, b) => a.order_position - b.order_position);
       for (const field of fields) {
         renderAnswerField(stageId, field, container);
       }
     } catch (err) {
-      container.textContent = "Не удалось загрузить поля";
+      container.dataset.loadState = "idle";
+      container.textContent = "Не удалось загрузить поля — откройте задачу ещё раз, чтобы повторить";
     }
   }
 
@@ -458,8 +515,7 @@
 
   async function loadChats() {
     try {
-      const response = await fetch("/chats");
-      const data = await response.json();
+      const data = await fetchJsonWithRetry("/chats");
       if (data.status !== "ok") {
         chatListEmptyEl.hidden = false;
         chatListEmptyEl.textContent = "Не удалось загрузить чаты";
@@ -508,6 +564,14 @@
       info.appendChild(modeEl);
 
       item.appendChild(info);
+
+      if (unreadChatIds.has(chat.id)) {
+        const unreadDot = document.createElement("span");
+        unreadDot.className = "chat-list-item__unread-dot";
+        unreadDot.setAttribute("aria-label", "Есть непрочитанное сообщение");
+        item.appendChild(unreadDot);
+      }
+
       item.addEventListener("click", () => openChat(chat, name));
       chatListEl.appendChild(item);
     }
@@ -515,6 +579,7 @@
 
   function openChat(chat, name) {
     currentChat = chat;
+    unreadChatIds.delete(chat.id);
     chatDetailTitle.textContent = name;
     chatListViewEl.hidden = true;
     chatDetailViewEl.hidden = false;
@@ -579,6 +644,10 @@
     const since = lastMessagePollAt;
     try {
       const response = await fetch(`/chats/new-messages?since=${encodeURIComponent(since)}`);
+      if (response.status === 401) {
+        handleSessionExpired();
+        return;
+      }
       const data = await response.json();
       if (data.status !== "ok" || data.messages.length === 0) {
         return;
@@ -593,6 +662,7 @@
       }
 
       for (const chatId of chatIdsWithNewMessages) {
+        unreadChatIds.add(chatId);
         const chat = allChats.find((c) => c.id === chatId);
         const name = chat ? getChatDisplayName(chat) : "Чат";
         showToast(`Новое сообщение: ${name}`, () => {
@@ -606,6 +676,13 @@
           }
         });
       }
+
+      // Если список чатов сейчас на экране — сразу перерисовать, чтобы
+      // значок непрочитанного появился без ожидания следующего открытия
+      // вкладки "Чат".
+      if (chatIdsWithNewMessages.size > 0 && !chatListViewEl.hidden) {
+        renderChatList(allChats);
+      }
     } catch (err) {
       // пропускаем один цикл опроса - следующий тик попробует снова
     }
@@ -618,8 +695,7 @@
     const chatId = currentChat.id;
     chatOptionsEl.textContent = "Загрузка…";
     try {
-      const response = await fetch(`/chats/${chatId}/dialogue`);
-      const data = await response.json();
+      const data = await fetchJsonWithRetry(`/chats/${chatId}/dialogue`);
       if (!currentChat || currentChat.id !== chatId) {
         return;
       }
@@ -716,8 +792,7 @@
     const chatId = currentChat.id;
     chatMessagesEl.textContent = "Загрузка…";
     try {
-      const response = await fetch(`/chats/${chatId}/messages`);
-      const data = await response.json();
+      const data = await fetchJsonWithRetry(`/chats/${chatId}/messages`);
       if (!currentChat || currentChat.id !== chatId) {
         return;
       }
@@ -793,8 +868,7 @@
     // перезаписать экран уже устаревшими данными, придя позже нового.
     const requestId = ++tasksRequestId;
     try {
-      const response = await fetch("/tasks");
-      const data = await response.json();
+      const data = await fetchJsonWithRetry("/tasks");
       if (requestId !== tasksRequestId) {
         return;
       }
