@@ -31,9 +31,9 @@ from config import load_config
 from dialogue import (
     DialogueError,
     choose_option,
-    decide_approval,
     get_dialogue_state,
-    list_pending_approvals,
+    list_pending_block_posts,
+    resolve_block_post,
     seed_team_dialogue_state,
 )
 from gpt import GptError, generate_reply
@@ -539,24 +539,25 @@ def create_app() -> Flask:
 
         return jsonify(status="ok", **result)
 
-    @app.get("/admin/dialogue/approvals")
-    def admin_list_dialogue_approvals() -> ResponseReturnValue:
+    @app.get("/admin/dialogue/block-posts")
+    def admin_list_block_posts() -> ResponseReturnValue:
         denied = require_operator()
         if denied:
             return denied
-        return jsonify(status="ok", approvals=list_pending_approvals())
+        return jsonify(status="ok", block_posts=list_pending_block_posts())
 
-    @app.post("/admin/dialogue/approvals/<approval_id>/decision")
-    def admin_decide_dialogue_approval(approval_id: str) -> ResponseReturnValue:
+    @app.post("/admin/dialogue/block-posts/<team_id>/<character_id>/resolve")
+    def admin_resolve_block_post(team_id: str, character_id: str) -> ResponseReturnValue:
         denied = require_operator()
         if denied:
             return denied
 
         data = request.get_json(silent=True) or {}
-        approve = bool(data.get("approve"))
+        option_id = data.get("option_id") or None
+        custom_text = data.get("custom_text") or None
 
         try:
-            decide_approval(approval_id, session["admin_id"], approve)
+            resolve_block_post(team_id, character_id, option_id, custom_text)
         except DialogueError as exc:
             return jsonify(status="error", detail=str(exc)), 400
 

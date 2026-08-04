@@ -869,6 +869,19 @@ button {
   margin: 0 0 var(--space-1);
 }
 
+.chat-options__typing {
+  animation: chat-options-typing-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes chat-options-typing-pulse {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .chat-option-btn {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);

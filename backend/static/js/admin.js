@@ -976,117 +976,154 @@
     return wrap;
   }
 
-  // ---- Блок-посты: dialogue approvals awaiting sign-off (operator only) ----
+  // ---- Блок-посты: команда ждёт, оператор выбирает или пишет реплику ----
 
   const approvalListEl = document.getElementById("admin-approval-list");
   const approvalListEmptyEl = document.getElementById("admin-approval-list-empty");
 
-  async function loadApprovals() {
+  async function loadBlockPosts() {
     try {
-      const data = await fetchJsonWithRetry("/admin/dialogue/approvals");
+      const data = await fetchJsonWithRetry("/admin/dialogue/block-posts");
       if (data.status !== "ok") {
         approvalListEmptyEl.hidden = false;
-        approvalListEmptyEl.textContent = "Не удалось загрузить заявки";
+        approvalListEmptyEl.textContent = "Не удалось загрузить блок-посты";
         return;
       }
-      renderApprovals(data.approvals);
-      setDot("approvals", data.approvals.length > 0);
+      renderBlockPosts(data.block_posts);
+      setDot("approvals", data.block_posts.length > 0);
     } catch (err) {
       approvalListEmptyEl.hidden = false;
-      approvalListEmptyEl.textContent = "Не удалось загрузить заявки";
+      approvalListEmptyEl.textContent = "Не удалось загрузить блок-посты";
     }
   }
 
-  function renderApprovals(approvals) {
+  function renderBlockPosts(blockPosts) {
     approvalListEl.innerHTML = "";
 
-    if (approvals.length === 0) {
+    if (blockPosts.length === 0) {
       approvalListEmptyEl.hidden = false;
-      approvalListEmptyEl.textContent = "Заблокированных диалогов нет";
+      approvalListEmptyEl.textContent = "Блок-постов нет";
       return;
     }
     approvalListEmptyEl.hidden = true;
 
-    for (const approval of approvals) {
-      approvalListEl.appendChild(buildApprovalCard(approval));
+    for (const blockPost of blockPosts) {
+      approvalListEl.appendChild(buildBlockPostCard(blockPost));
     }
   }
 
-  function buildApprovalCard(approval) {
+  function buildBlockPostCard(blockPost) {
     const card = document.createElement("div");
     card.className = "approval-card";
 
     const team = document.createElement("div");
     team.className = "approval-card__team";
-    team.textContent = approval.teams ? approval.teams.name : "Команда";
+    team.textContent = `${blockPost.team_name} — ${blockPost.character_name}`;
     card.appendChild(team);
 
-    const meta = document.createElement("div");
-    meta.className = "approval-card__meta";
-    meta.textContent = formatDateTime(approval.created_at);
-    card.appendChild(meta);
+    if (blockPost.intro_message) {
+      const intro = document.createElement("p");
+      intro.className = "approval-card__text approval-card__text--muted";
+      intro.textContent = blockPost.intro_message;
+      card.appendChild(intro);
+    }
 
-    const option = approval.dialogue_options || {};
+    const groupName = `block-post-${blockPost.team_id}-${blockPost.character_id}`;
+    const optionInputs = [];
 
-    const chosen = document.createElement("p");
-    chosen.className = "approval-card__text";
-    chosen.textContent = `Команда выбрала: ${option.option_text || ""}`;
-    card.appendChild(chosen);
+    for (const option of blockPost.options) {
+      const label = document.createElement("label");
+      label.className = "block-post-option";
 
-    const reply = document.createElement("p");
-    reply.className = "approval-card__text approval-card__text--muted";
-    reply.textContent = `Ответ персонажа: ${option.reply_message || ""}`;
-    card.appendChild(reply);
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = groupName;
+      radio.value = option.id;
+      optionInputs.push(radio);
+      label.appendChild(radio);
 
-    const actions = document.createElement("div");
-    actions.className = "approval-card__actions";
+      const text = document.createElement("span");
+      text.className = "block-post-option__text";
 
-    const approveButton = document.createElement("button");
-    approveButton.type = "button";
-    approveButton.className = "btn-primary approval-card__action";
-    approveButton.textContent = "Одобрить";
-    actions.appendChild(approveButton);
+      const smallLabel = document.createElement("span");
+      smallLabel.className = "block-post-option__label";
+      smallLabel.textContent = option.text;
+      text.appendChild(smallLabel);
 
-    const rejectButton = document.createElement("button");
-    rejectButton.type = "button";
-    rejectButton.className = "btn-secondary approval-card__action";
-    rejectButton.textContent = "Отклонить";
-    actions.appendChild(rejectButton);
+      const replyText = document.createElement("span");
+      replyText.className = "block-post-option__reply";
+      replyText.textContent = option.reply;
+      text.appendChild(replyText);
 
-    card.appendChild(actions);
+      label.appendChild(text);
+      card.appendChild(label);
+    }
+
+    const customInput = document.createElement("textarea");
+    customInput.className = "task-review__textarea block-post-custom";
+    customInput.rows = 2;
+    customInput.placeholder = "Свой вариант реплики";
+    card.appendChild(customInput);
+
+    // Выбор готового варианта и свой текст - взаимоисключающие: набор текста
+    // сбрасывает выбранный радио-вариант и наоборот, чтобы не было неясности,
+    // что именно уйдёт команде при отправке.
+    customInput.addEventListener("input", () => {
+      if (customInput.value.trim()) {
+        for (const radio of optionInputs) {
+          radio.checked = false;
+        }
+      }
+    });
+    for (const radio of optionInputs) {
+      radio.addEventListener("change", () => {
+        customInput.value = "";
+      });
+    }
+
+    const sendButton = document.createElement("button");
+    sendButton.type = "button";
+    sendButton.className = "btn-primary approval-card__action";
+    sendButton.textContent = "Отправить как есть";
+    card.appendChild(sendButton);
 
     const error = document.createElement("p");
     error.className = "form-error";
     card.appendChild(error);
 
-    async function decide(approve) {
-      approveButton.disabled = true;
-      rejectButton.disabled = true;
+    sendButton.addEventListener("click", async () => {
+      const selected = optionInputs.find((radio) => radio.checked);
+      const customText = customInput.value.trim();
+      if (!selected && !customText) {
+        error.textContent = "Выберите готовый вариант или напишите свой текст";
+        return;
+      }
+      sendButton.disabled = true;
       error.textContent = "";
       try {
-        const response = await fetch(`/admin/dialogue/approvals/${approval.id}/decision`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ approve }),
-        });
+        const response = await fetch(
+          `/admin/dialogue/block-posts/${blockPost.team_id}/${blockPost.character_id}/resolve`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(
+              selected ? { option_id: selected.value } : { custom_text: customText }
+            ),
+          }
+        );
         const data = await response.json();
         if (data.status !== "ok") {
-          error.textContent = data.detail || "Не получилось сохранить решение";
-          approveButton.disabled = false;
-          rejectButton.disabled = false;
+          error.textContent = data.detail || "Не получилось отправить";
+          sendButton.disabled = false;
           return;
         }
-        removePendingBanner(`approval:${approval.id}`);
-        loadApprovals();
+        removePendingBanner(`approval:${blockPost.team_id}:${blockPost.character_id}`);
+        loadBlockPosts();
       } catch (err) {
         error.textContent = "Не удалось связаться с сервером";
-        approveButton.disabled = false;
-        rejectButton.disabled = false;
+        sendButton.disabled = false;
       }
-    }
-
-    approveButton.addEventListener("click", () => decide(true));
-    rejectButton.addEventListener("click", () => decide(false));
+    });
 
     return card;
   }
@@ -1147,7 +1184,7 @@
       const requests = [fetch("/admin/reviews")];
       if (isOperator) {
         requests.push(
-          fetch("/admin/dialogue/approvals"),
+          fetch("/admin/dialogue/block-posts"),
           fetch("/admin/support-chats"),
           fetch("/admin/dialogue-chats")
         );
@@ -1171,16 +1208,23 @@
       }
 
       if (isOperator) {
-        const approvalsData = await responses[1].json();
-        if (approvalsData.status === "ok") {
-          syncPendingBanners("approval", approvalsData.approvals, knownPendingApprovalIds, (approval) => ({
-            text: `Новый блок-пост диалога: ${approval.teams ? approval.teams.name : "команда"}`,
+        const blockPostsData = await responses[1].json();
+        if (blockPostsData.status === "ok") {
+          // У блок-поста нет собственного стабильного id (это не отдельная
+          // строка в таблице, а производное от team_dialogue_state) -
+          // используем team_id+character_id как синтетический ключ.
+          const blockPostsWithId = blockPostsData.block_posts.map((bp) => ({
+            ...bp,
+            id: `${bp.team_id}:${bp.character_id}`,
+          }));
+          syncPendingBanners("approval", blockPostsWithId, knownPendingApprovalIds, (bp) => ({
+            text: `Новый блок-пост: ${bp.team_name} — ${bp.character_name}`,
             onClick: () => {
               setSection("approvals");
-              loadApprovals();
+              loadBlockPosts();
             },
           }));
-          setDot("approvals", approvalsData.approvals.length > 0);
+          setDot("approvals", blockPostsWithId.length > 0);
         }
 
         const supportData = await responses[2].json();
@@ -1286,7 +1330,7 @@
 
   navButtons.approvals.addEventListener("click", () => {
     setSection("approvals");
-    loadApprovals();
+    loadBlockPosts();
   });
 
   logoutButton.addEventListener("click", async () => {

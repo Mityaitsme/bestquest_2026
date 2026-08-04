@@ -641,6 +641,7 @@
 
   function openChat(chat, name) {
     currentChat = chat;
+    stopDialogueWaitPolling();
     unreadChatIds.delete(chat.id);
     updateChatTabDot();
     chatDetailTitle.textContent = name;
@@ -796,15 +797,42 @@
     }
   }
 
-  function renderDialogueOptions(state, note) {
+  const DIALOGUE_WAIT_POLL_INTERVAL_MS = 4000;
+  let dialogueWaitPollTimer = null;
+
+  function startDialogueWaitPolling() {
+    if (dialogueWaitPollTimer) {
+      return;
+    }
+    dialogueWaitPollTimer = setInterval(() => {
+      if (currentChat) {
+        loadDialogue();
+      }
+    }, DIALOGUE_WAIT_POLL_INTERVAL_MS);
+  }
+
+  function stopDialogueWaitPolling() {
+    if (dialogueWaitPollTimer) {
+      clearInterval(dialogueWaitPollTimer);
+      dialogueWaitPollTimer = null;
+    }
+  }
+
+  function renderDialogueOptions(state) {
     chatOptionsEl.innerHTML = "";
 
-    if (note) {
-      const noteEl = document.createElement("p");
-      noteEl.className = "chat-options__note";
-      noteEl.textContent = note;
-      chatOptionsEl.appendChild(noteEl);
+    // Блок-пост: реплику сейчас выбирает оператор, у команды нет кнопок —
+    // пока ждём, тихо опрашиваем на случай, если оператор уже ответил
+    // (сама реплика придёт отдельно через обычный опрос новых сообщений).
+    if (state.waiting_for_operator) {
+      const typing = document.createElement("p");
+      typing.className = "chat-options__note chat-options__typing";
+      typing.textContent = "Персонаж печатает…";
+      chatOptionsEl.appendChild(typing);
+      startDialogueWaitPolling();
+      return;
     }
+    stopDialogueWaitPolling();
 
     if (state.finished || !state.options || state.options.length === 0) {
       const empty = document.createElement("p");
@@ -848,10 +876,7 @@
         return;
       }
       await loadMessages();
-      renderDialogueOptions(
-        data.state,
-        data.pending_approval ? "Ответ отправлен — ждите одобрения оператора." : null
-      );
+      renderDialogueOptions(data.state);
     } catch (err) {
       if (!currentChat || currentChat.id !== chatId) {
         return;
@@ -864,6 +889,7 @@
 
   chatBackButton.addEventListener("click", () => {
     currentChat = null;
+    stopDialogueWaitPolling();
     chatDetailViewEl.hidden = true;
     chatListViewEl.hidden = false;
     loadChats();

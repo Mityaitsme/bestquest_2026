@@ -1,15 +1,24 @@
-"""Скриптованный диалог: узлы с вариантами ответа, ветвление, блок-посты,
-механика "выберите все варианты".
+"""Скриптованный диалог: узлы с вариантами ответа, ветвление, механика
+"выберите все варианты" и блок-посты.
 
-Выбор варианта, помимо продвижения по диалогу, всегда добавляет 2 записи
-в общую историю чата (messages из chat.py) — реплику команды и ответ
-персонажа — чтобы скриптованные и свободные сообщения были видны в одной
-ленте.
+Блок-пост — свойство УЗЛА (dialogue_nodes.is_block_post), а не варианта:
+команда, попав в такой узел, видит "печатает..." без кнопок выбора, а
+реплику персонажа в этот момент решает оператор — либо выбирает один из
+заранее написанных в этом узле вариантов (dialogue_options здесь играют
+роль не кнопок для команды, а кандидатов реплики для оператора), либо
+пишет свой текст. Дальше всегда один и тот же next_node_id узла (тот же
+столбец, что уже используют requires_all_options-узлы) — ветвления по
+выбору оператора нет, оператор выбирает только ТЕКСТ, а не сюжетную ветку.
+
+Выбор варианта на обычном узле, помимо продвижения по диалогу, всегда
+добавляет 2 записи в общую историю чата (messages из chat.py) — реплику
+команды и ответ персонажа — чтобы скриптованные и свободные сообщения были
+видны в одной ленте. У блок-поста реплика команды уже добавлена тем
+вариантом, который её сюда привёл — здесь добавляется только ответ
+персонажа, когда оператор его пришлёт.
 """
 
 from __future__ import annotations
-
-from datetime import datetime, timezone
 
 from supabase_client import get_supabase_client
 
@@ -55,15 +64,25 @@ def _get_state(client, team_id: str, character_id: str) -> dict | None:
 
 
 def get_dialogue_state(team_id: str, character_id: str) -> dict:
-    """Текущий узел диалога команды с персонажем: текст узла + доступные варианты."""
+    """Текущий узел диалога команды с персонажем: текст узла + доступные варианты
+    (пусто и waiting_for_operator=true, если это блок-пост и команда ждёт оператора)."""
     client = get_supabase_client()
 
     state = _get_state(client, team_id, character_id)
     if not state or not state["current_node_id"]:
-        return {"finished": True, "intro_message": "", "options": []}
+        return {"finished": True, "intro_message": "", "options": [], "waiting_for_operator": False}
 
     node_id = state["current_node_id"]
     node = client.table("dialogue_nodes").select("*").eq("id", node_id).execute().data[0]
+
+    if node["is_block_post"]:
+        return {
+            "finished": False,
+            "node_id": node_id,
+            "intro_message": node["intro_message"],
+            "options": [],
+            "waiting_for_operator": True,
+        }
 
     options = (
         client.table("dialogue_options")
@@ -90,6 +109,7 @@ def get_dialogue_state(team_id: str, character_id: str) -> dict:
         "node_id": node_id,
         "intro_message": node["intro_message"],
         "options": [{"id": o["id"], "text": o["option_text"]} for o in options],
+        "waiting_for_operator": False,
     }
 
 
@@ -114,30 +134,24 @@ def choose_option(team_id: str, character_id: str, option_id: str) -> dict:
     if chat_mode != "scripted":
         raise DialogueError(f"Диалог сейчас не в режиме scripted (сейчас: {chat_mode})")
 
+    node = (
+        client.table("dialogue_nodes")
+        .select("requires_all_options, next_node_id, is_block_post")
+        .eq("id", state["current_node_id"])
+        .execute()
+        .data[0]
+    )
+    if node["is_block_post"]:
+        # Фронтенд не должен был вообще показать кнопки на таком узле —
+        # это подстраховка от рассинхронизации состояния на клиенте.
+        raise DialogueError("Этот узел ждёт ответа оператора, вариант выбрать нельзя")
+
     client.table("messages").insert(
         {"chat_id": chat_id, "sender_type": CHOSEN_OPTION_SENDER, "content": option["option_text"]}
     ).execute()
     client.table("messages").insert(
         {"chat_id": chat_id, "sender_type": REPLY_SENDER, "content": option["reply_message"]}
     ).execute()
-
-    if option["requires_admin_approval"]:
-        client.table("dialogue_approvals").insert(
-            {"team_id": team_id, "option_id": option_id}
-        ).execute()
-        return {
-            "reply": option["reply_message"],
-            "pending_approval": True,
-            "state": get_dialogue_state(team_id, character_id),
-        }
-
-    node = (
-        client.table("dialogue_nodes")
-        .select("requires_all_options, next_node_id")
-        .eq("id", state["current_node_id"])
-        .execute()
-        .data[0]
-    )
 
     if node["requires_all_options"]:
         client.table("team_dialogue_used_options").upsert(
@@ -169,7 +183,6 @@ def choose_option(team_id: str, character_id: str, option_id: str) -> dict:
 
     return {
         "reply": option["reply_message"],
-        "pending_approval": False,
         "state": get_dialogue_state(team_id, character_id),
     }
 
@@ -194,57 +207,87 @@ def _get_character_chat(client, team_id: str, character_id: str) -> tuple[str, s
     return chat[0]["id"], chat[0]["mode"]
 
 
-def list_pending_approvals() -> list[dict]:
+def list_pending_block_posts() -> list[dict]:
+    """Очередь для вкладки 'Блок-посты': все команды, чьё текущее состояние
+    диалога с каким-либо персонажем сейчас "заморожено" на блок-посте, вместе
+    с кандидатами реплики (варианты этого узла) на выбор оператору."""
     client = get_supabase_client()
-    return (
-        client.table("dialogue_approvals")
-        .select("id, created_at, teams(name), dialogue_options(option_text, reply_message)")
-        .eq("status", "pending")
-        .order("created_at")
+
+    states = (
+        client.table("team_dialogue_state")
+        .select(
+            "team_id, character_id, current_node_id, "
+            "teams(name), characters(name), dialogue_nodes(intro_message, is_block_post)"
+        )
         .execute()
         .data
     )
+    pending = [
+        s for s in states if s["current_node_id"] and s["dialogue_nodes"] and s["dialogue_nodes"]["is_block_post"]
+    ]
+    if not pending:
+        return []
 
-
-def decide_approval(approval_id: str, admin_id: str, approve: bool) -> None:
-    client = get_supabase_client()
-
-    approval_rows = (
-        client.table("dialogue_approvals")
-        .select("id, team_id, option_id, status")
-        .eq("id", approval_id)
-        .execute()
-        .data
-    )
-    if not approval_rows:
-        raise DialogueError("Такой заявки нет")
-    approval = approval_rows[0]
-    if approval["status"] != "pending":
-        raise DialogueError(f"Заявка уже обработана ({approval['status']})")
-
-    client.table("dialogue_approvals").update(
-        {
-            "status": "approved" if approve else "rejected",
-            "reviewer_admin_id": admin_id,
-            "reviewed_at": datetime.now(timezone.utc).isoformat(),
-        }
-    ).eq("id", approval_id).execute()
-
-    if not approve:
-        return
-
-    option = (
+    node_ids = list({s["current_node_id"] for s in pending})
+    options_by_node: dict[str, list[dict]] = {}
+    for row in (
         client.table("dialogue_options")
-        .select("node_id, next_node_id")
-        .eq("id", approval["option_id"])
+        .select("id, node_id, option_text, reply_message")
+        .in_("node_id", node_ids)
         .execute()
-        .data[0]
-    )
-    node = (
-        client.table("dialogue_nodes")
-        .select("character_id")
-        .eq("id", option["node_id"])
-        .execute()
-        .data[0]
-    )
-    _advance_to(client, approval["team_id"], node["character_id"], option["next_node_id"])
+        .data
+    ):
+        options_by_node.setdefault(row["node_id"], []).append(row)
+
+    return [
+        {
+            "team_id": s["team_id"],
+            "character_id": s["character_id"],
+            "team_name": s["teams"]["name"] if s["teams"] else "?",
+            "character_name": s["characters"]["name"] if s["characters"] else "?",
+            "intro_message": s["dialogue_nodes"]["intro_message"],
+            "options": [
+                {"id": o["id"], "text": o["option_text"], "reply": o["reply_message"]}
+                for o in options_by_node.get(s["current_node_id"], [])
+            ],
+        }
+        for s in pending
+    ]
+
+
+def resolve_block_post(
+    team_id: str,
+    character_id: str,
+    option_id: str | None,
+    custom_text: str | None,
+) -> None:
+    """Оператор отправляет реплику персонажа на блок-посте — готовый вариант
+    (option_id) или свой текст (custom_text, ровно один из двух должен быть
+    задан). Дальше команда идёт по next_node_id узла — оператор выбирает
+    только текст, не сюжетную ветку."""
+    client = get_supabase_client()
+
+    state = _get_state(client, team_id, character_id)
+    if not state or not state["current_node_id"]:
+        raise DialogueError("Диалог с этим персонажем сейчас не активен")
+
+    node = client.table("dialogue_nodes").select("*").eq("id", state["current_node_id"]).execute().data[0]
+    if not node["is_block_post"]:
+        raise DialogueError("Команда сейчас не на блок-посте")
+
+    if option_id:
+        option_rows = client.table("dialogue_options").select("*").eq("id", option_id).execute().data
+        if not option_rows or option_rows[0]["node_id"] != node["id"]:
+            raise DialogueError("Такого варианта нет у этого узла")
+        text = option_rows[0]["reply_message"]
+    elif custom_text and custom_text.strip():
+        text = custom_text.strip()
+    else:
+        raise DialogueError("Нужно выбрать готовый вариант или написать свой текст")
+
+    chat_id, _ = _get_character_chat(client, team_id, character_id)
+    client.table("messages").insert(
+        {"chat_id": chat_id, "sender_type": REPLY_SENDER, "content": text}
+    ).execute()
+
+    _advance_to(client, team_id, character_id, node["next_node_id"])

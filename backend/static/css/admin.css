@@ -150,6 +150,48 @@
   flex: 1;
 }
 
+/* ---- Admin: block-post reply candidates (радио + свой текст) ---- */
+
+.block-post-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.block-post-option:hover {
+  border-color: var(--accent);
+}
+
+.block-post-option input[type="radio"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.block-post-option__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.block-post-option__label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.block-post-option__reply {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.block-post-custom {
+  min-height: 0;
+}
+
 /* ---- Admin: team detail (tasks + graph, chats moved to their own tabs) ---- */
 
 #admin-team-detail-view,

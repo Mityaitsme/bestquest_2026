@@ -101,6 +101,11 @@ def validate_dialogues(characters: list[dict[str, Any]]) -> None:
                     f"Персонаж '{slug}', узел '{key}': next ссылается "
                     f"на неизвестный узел '{node_next}'"
                 )
+            if node.get("is_block_post") and not node_next:
+                raise ContentError(
+                    f"Персонаж '{slug}', узел '{key}': is_block_post узел должен "
+                    "указывать next (куда идти после ответа оператора)"
+                )
 
             options = node.get("options", [])
             if not options:
@@ -401,6 +406,7 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
                         "intro_message": node.get("intro", ""),
                         "is_start": node.get("entry", False),
                         "requires_all_options": node.get("requires_all_options", False),
+                        "is_block_post": node.get("is_block_post", False),
                     },
                     on_conflict="character_id,content_key",
                 )
@@ -428,7 +434,6 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
                         "option_text": option["text"],
                         "reply_message": option["reply"],
                         "next_node_id": key_to_node_id.get(option.get("next")),
-                        "requires_admin_approval": option.get("requires_admin_approval", False),
                     },
                     on_conflict="node_id,content_key",
                 ).execute()
