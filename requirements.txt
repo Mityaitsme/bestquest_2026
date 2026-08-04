@@ -3,3 +3,4 @@ python-dotenv==1.0.1
 supabase==2.31.0
 PyYAML==6.0.2
 openai==2.48.0
+gunicorn==23.0.0

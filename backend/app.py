@@ -71,6 +71,11 @@ def create_app() -> Flask:
     app.config["SECRET_KEY"] = config.secret_key
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_CONTENT_LENGTH
     app.permanent_session_lifetime = timedelta(days=SESSION_LIFETIME_DAYS)
+    # Secure — куки только по HTTPS; локально (debug=true, обычный http://)
+    # секьюрные куки браузер просто не отправит, поэтому включаем только
+    # в проде (Render всегда отдаёт сайт по HTTPS).
+    app.config["SESSION_COOKIE_SECURE"] = not config.debug
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
     def require_operator() -> ResponseReturnValue | None:
         if session.get("identity") != "admin" or session.get("role") != "operator":
