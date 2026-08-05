@@ -29,7 +29,7 @@ from chat import trigger_scripted_dialogue
 from supabase_client import get_supabase_client
 
 DEFAULT_CONTENT_PATH = Path(__file__).resolve().parent.parent / "data" / "quest_content.yaml"
-VALID_COMPLETION_TYPES = ("actor", "answer", "checkbox", "manual_review")
+VALID_COMPLETION_TYPES = ("actor", "answer", "checkbox", "manual_review", "dialogue")
 
 AUDIO_ASSETS_DIR = DEFAULT_CONTENT_PATH.parent / "audio"
 AUDIO_BUCKET = "call-audio"
@@ -50,7 +50,7 @@ def load_content(path: Path) -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
-def validate_characters(characters: list[dict[str, Any]]) -> None:
+def validate_characters(characters: list[dict[str, Any]], stage_slugs: set[str]) -> None:
     seen_slugs: set[str] = set()
     seen_nicknames: set[str] = set()
 
@@ -69,6 +69,13 @@ def validate_characters(characters: list[dict[str, Any]]) -> None:
         if nickname in seen_nicknames:
             raise ContentError(f"Повторяющийся nickname персонажа: {nickname}")
         seen_nicknames.add(nickname)
+
+        completion_stage_slug = character.get("completes_stage_on_dialogue_end")
+        if completion_stage_slug and completion_stage_slug not in stage_slugs:
+            raise ContentError(
+                f"Персонаж '{slug}': completes_stage_on_dialogue_end ссылается "
+                f"на неизвестный этап '{completion_stage_slug}'"
+            )
 
 
 def validate_dialogues(characters: list[dict[str, Any]]) -> None:
@@ -138,7 +145,11 @@ def validate_dialogues(characters: list[dict[str, Any]]) -> None:
             )
 
 
-def validate_stages(stages: list[dict[str, Any]], character_slugs: set[str]) -> None:
+def validate_stages(
+    stages: list[dict[str, Any]],
+    character_slugs: set[str],
+    dialogue_completion_stage_slugs: set[str],
+) -> None:
     all_slugs = {stage.get("slug") for stage in stages}
     seen_slugs: set[str] = set()
 
@@ -158,6 +169,18 @@ def validate_stages(stages: list[dict[str, Any]], character_slugs: set[str]) -> 
             raise ContentError(
                 f"Этап '{slug}': недопустимый completion_type '{completion_type}', "
                 f"должен быть одним из {VALID_COMPLETION_TYPES}"
+            )
+
+        if completion_type == "dialogue" and slug not in dialogue_completion_stage_slugs:
+            raise ContentError(
+                f"Этап '{slug}': completion_type='dialogue', но ни один персонаж "
+                "не ссылается на него через completes_stage_on_dialogue_end — "
+                "этап никогда не завершится"
+            )
+        if slug in dialogue_completion_stage_slugs and completion_type != "dialogue":
+            raise ContentError(
+                f"Этап '{slug}': на него ссылается completes_stage_on_dialogue_end "
+                f"персонажа, но completion_type='{completion_type}' (должен быть 'dialogue')"
             )
 
         fields = stage.get("fields", [])
@@ -275,6 +298,7 @@ def _backfill_existing_teams(
             .data
         }
         missing_team_ids = [team_id for team_id in team_ids if team_id not in existing_team_ids]
+        start_node_id = character_start_node_id.get(slug)
         if missing_team_ids:
             client.table("chats").insert(
                 [
@@ -283,13 +307,13 @@ def _backfill_existing_teams(
                         "character_id": character_id,
                         "chat_type": "character",
                         "discovered": False,
+                        "mode": "scripted" if start_node_id else "operator",
                     }
                     for team_id in missing_team_ids
                 ]
             ).execute()
             added_chats += len(missing_team_ids)
 
-        start_node_id = character_start_node_id.get(slug)
         if not start_node_id:
             continue
         existing_state_team_ids = {
@@ -359,9 +383,17 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
     characters = data.get("characters", [])
     stages = data.get("stages", [])
     phone_numbers = data.get("phone_numbers", [])
-    validate_characters(characters)
+    stage_slugs = {stage.get("slug") for stage in stages}
+    dialogue_completion_stage_slugs = {
+        character["completes_stage_on_dialogue_end"]
+        for character in characters
+        if character.get("completes_stage_on_dialogue_end")
+    }
+    validate_characters(characters, stage_slugs)
     validate_dialogues(characters)
-    validate_stages(stages, {character["slug"] for character in characters})
+    validate_stages(
+        stages, {character["slug"] for character in characters}, dialogue_completion_stage_slugs
+    )
     validate_phone_numbers(phone_numbers)
 
     client = get_supabase_client()
@@ -460,6 +492,12 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
         )
         slug_to_id[stage["slug"]] = row["id"]
         print(f"этап: {stage['slug']}")
+
+    for character in characters:
+        completion_stage_slug = character.get("completes_stage_on_dialogue_end")
+        client.table("characters").update(
+            {"completion_stage_id": slug_to_id.get(completion_stage_slug) if completion_stage_slug else None}
+        ).eq("id", character_slug_to_id[character["slug"]]).execute()
 
     stage_dialogue_triggers: dict[str, list[str]] = {}
     for stage in stages:

@@ -9,7 +9,7 @@ from chat import trigger_scripted_dialogue
 from supabase_client import get_supabase_client
 
 VISIBLE_STATUSES = ("available", "completed")
-CompletionMethod = Literal["actor", "answer", "checkbox", "manual_review"]
+CompletionMethod = Literal["actor", "answer", "checkbox", "manual_review", "dialogue"]
 
 
 class TaskError(Exception):

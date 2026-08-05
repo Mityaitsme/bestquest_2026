@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 from supabase_client import get_supabase_client
+from tasks import TaskError, mark_stage_completed
 
 CHOSEN_OPTION_SENDER = "team"
 REPLY_SENDER = "character"
@@ -202,6 +203,32 @@ def _advance_to(client, team_id: str, character_id: str, node_id: str | None) ->
         client.table("chats").update({"mode": "muted"}).eq("team_id", team_id).eq(
             "character_id", character_id
         ).execute()
+        _complete_linked_stage(client, team_id, character_id)
+
+
+def _complete_linked_stage(client, team_id: str, character_id: str) -> None:
+    """Если у персонажа задан completion_stage_id (YAML-ключ персонажа
+    completes_stage_on_dialogue_end) — конец его сценарного диалога сам
+    отмечает этот этап выполненным для команды, без участия актёра. Молча
+    ничего не делает, если этап сейчас не в статусе 'available' (например,
+    уже выполнен другим способом или граф ещё не дошёл до него) — сбой этой
+    привязки не должен ронять сам диалог."""
+    character = (
+        client.table("characters").select("completion_stage_id").eq("id", character_id).execute().data
+    )
+    stage_id = character[0]["completion_stage_id"] if character else None
+    if not stage_id:
+        return
+
+    try:
+        mark_stage_completed(
+            team_id=team_id,
+            stage_id=stage_id,
+            completed_by_admin_id=None,
+            completion_method="dialogue",
+        )
+    except TaskError:
+        pass
 
 
 def _get_character_chat(client, team_id: str, character_id: str) -> tuple[str, str]:

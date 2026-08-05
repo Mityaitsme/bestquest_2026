@@ -26,16 +26,36 @@ def seed_team_chats(team_id: str) -> None:
     или когда чат сам "откроется" сюжетным триггером (см. tasks.py:
     mark_stage_completed + trigger_scripted_dialogue ниже). Чат техподдержки
     виден всегда.
+
+    Режим по умолчанию — 'scripted' для персонажей, у которых есть сценарный
+    диалог (иначе команде показывать нечего), иначе 'operator' (свободный
+    текст/молчание — так и было для всех персонажей раньше).
     """
     client = get_supabase_client()
     characters = client.table("characters").select("id").execute().data
+    characters_with_dialogue = {
+        row["character_id"]
+        for row in client.table("dialogue_nodes").select("character_id").eq("is_start", True).execute().data
+    }
 
     rows = [
-        {"team_id": team_id, "character_id": c["id"], "chat_type": "character", "discovered": False}
+        {
+            "team_id": team_id,
+            "character_id": c["id"],
+            "chat_type": "character",
+            "discovered": False,
+            "mode": "scripted" if c["id"] in characters_with_dialogue else "operator",
+        }
         for c in characters
     ]
     rows.append(
-        {"team_id": team_id, "character_id": None, "chat_type": "support", "discovered": True}
+        {
+            "team_id": team_id,
+            "character_id": None,
+            "chat_type": "support",
+            "discovered": True,
+            "mode": "operator",
+        }
     )
 
     client.table("chats").insert(rows).execute()

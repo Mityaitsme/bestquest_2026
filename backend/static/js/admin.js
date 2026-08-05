@@ -11,6 +11,7 @@
     answer: "вводит команда",
     checkbox: "подтверждает команда",
     manual_review: "на проверке у оператора",
+    dialogue: "сценарий",
   };
 
   const CHAT_MODE_LABELS = {
