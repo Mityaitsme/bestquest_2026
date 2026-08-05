@@ -1,0 +1,305 @@
+# Игровой контент: персонажи + граф этапов + поля ответа.
+#
+# Персонажи (characters):
+#   slug        — уникальный id (не менять после публикации)
+#   name        — как зовут персонажа "по паспорту"
+#   nickname    — ник, по которому команда ищет его в поиске чатов (можно
+#                 вводить с "#" или без — это просто визуальная подсказка)
+#   public_lore — необязательно, публичная предыстория персонажа
+# При регистрации команды под каждого персонажа создаётся чат (плюс один
+# чат техподдержки), но команда его пока НЕ видит в списке — см. ниже
+# triggers_scripted_dialogue и backend/chat.py: seed_team_chats/discover_chat.
+#
+# Этапы (stages):
+#   slug              — уникальный человекочитаемый id этапа (не менять после публикации,
+#                        на нём завязаны ссылки requires у других этапов)
+#   title, description — текст, который видит команда
+#   completion_type   — actor | answer | checkbox | manual_review
+#   requires          — список slug этапов-предпосылок (граф — только AND:
+#                        этап открывается, когда пройдены ВСЕ перечисленные)
+#   triggers_scripted_dialogue — необязательно, список slug персонажей: когда
+#                        команда проходит этот этап (любым способом), чат с
+#                        каждым из них сам переключается в режим "сценарий" и
+#                        становится видимым в списке чатов команды (не нужно
+#                        ни искать ник, ни оператору вручную включать режим).
+#                        Оператор всё ещё может вручную переключить режим
+#                        обратно через dropdown в админке при необходимости.
+#   fields            — только для completion_type: answer. order_sensitive: true
+#                        означает, что accepted относится именно к этому полю;
+#                        чтобы сделать order-insensitive группу полей, укажите
+#                        ОДИН И ТОТ ЖЕ список accepted у каждого поля группы
+#                        и order_sensitive: false. Сравнение всегда без учёта
+#                        регистра и лишних пробелов.
+#                        accepted          — точные принятые ответы (как раньше)
+#                        accepted_contains — необязательно: "ключевые слова",
+#                          засчитывается, если хотя бы одно встречается ПОДСТРОКОЙ
+#                          в ответе команды. Пример: accepted_contains: ["кружк", "чашк"]
+#                          примет и "кружка", и "чашка - улика", и "дело в кружке".
+#                          Можно использовать accepted и accepted_contains вместе.
+#
+# Скриптованный диалог персонажа (необязательный ключ dialogue у персонажа):
+#   nodes            — список узлов
+#     key            — локальный id узла внутри этого персонажа
+#     entry: true     — ровно один такой узел, с него начинается диалог
+#     intro          — что персонаж "говорит" при попадании в этот узел
+#     requires_all_options — узел не отпускает команду, пока не выбраны
+#                        ВСЕ варианты по одному (выбор не влияет на сюжет,
+#                        нужно просто перебрать все); next в этом случае —
+#                        куда идти, когда варианты закончились
+#     is_block_post  — "блок-пост": команда, попав в этот узел, видит
+#                        "печатает..." БЕЗ кнопок выбора — реплику персонажа
+#                        в этот момент решает оператор в разделе "Блок-посты":
+#                        либо выбирает один из options этого узла (это уже не
+#                        кнопки команды, а варианты реплики НА ВЫБОР ОПЕРАТОРУ),
+#                        либо пишет свой текст. next у такого узла обязателен
+#                        (куда идти после ответа оператора) — ветвления по
+#                        выбору оператора нет, он выбирает только текст.
+#     options        — 1-4 варианта:
+#       - на обычном узле: кнопки команды. key, text, reply — id, текст
+#         кнопки, ответ персонажа на этот выбор; next — key следующего узла
+#         (не указан = диалог кончается)
+#       - на is_block_post узле: кандидаты реплики для оператора. key, text —
+#         короткая внутренняя пометка (видна только оператору), reply — сам
+#         текст, который оператор может отправить одним нажатием; next и key
+#         кнопки команде здесь не участвуют
+#
+# ЭТО ТЕСТОВЫЙ КОНТЕНТ для дизайн-ревью (не боевой). Специально собран так,
+# чтобы задействовать каждую фичу хотя бы раз: 3 персонажа (один без диалога —
+# для проверки operator/gpt чата), ветвящийся граф из 7 этапов со всеми 4
+# способами завершения и обоими режимами сравнения ответов, 3 номера телефона
+# (простой без пароля, с одним паролем, с цепочкой из двух паролей).
+#
+# Запуск загрузки:
+#   cd backend && python import_content.py
+# (по умолчанию читает ../data/quest_content.yaml)
+
+characters:
+  - slug: curator
+    name: "Куратор"
+    nickname: "curator_2026"
+    public_lore: "Таинственный куратор квеста, ведёт команду через основную сюжетную линию."
+    dialogue:
+      nodes:
+        - key: start
+          entry: true
+          intro: "Привет! Вы готовы начать это странное дело?"
+          options:
+            - key: good
+              text: "Готовы, конечно"
+              reply: "Рад слышать. Тогда слушайте внимательно."
+              next: block
+            - key: bad
+              text: "Не уверены"
+              reply: "Понимаю сомнения. Но выбора у вас уже нет."
+              next: block
+        - key: block
+          intro: "Расскажите мне, что вы уже успели узнать из дневника."
+          options:
+            - key: treasure
+              text: "Там написано про сокровище"
+              reply: "Ага, значит вы что-то нашли..."
+              next: verdict
+            - key: breakfast
+              text: "Там написано про завтрак"
+              reply: "Хм, не то. Перечитайте внимательнее."
+              next: block
+        - key: verdict
+          is_block_post: true
+          intro: ""
+          next: exhaust
+          options:
+            - key: praise
+              text: "Похвалить"
+              reply: "Да! Именно это я и ждал услышать."
+            - key: doubt
+              text: "Усомниться"
+              reply: "Хм, интересная теория, но не уверен, что верю."
+            - key: neutral
+              text: "Нейтрально принять"
+              reply: "Записал. Идём дальше."
+        - key: exhaust
+          intro: "Отлично. Теперь назовите мне все ключевые слова, которые нашли."
+          requires_all_options: true
+          options:
+            - key: w1
+              text: "Полночь"
+              reply: "Записал."
+            - key: w2
+              text: "Восток"
+              reply: "Записал."
+            - key: w3
+              text: "Ключ"
+              reply: "Записал."
+
+  - slug: witness
+    name: "Свидетельница"
+    nickname: "anna_w"
+    public_lore: "Случайная свидетельница, кое-что видела той ночью."
+    dialogue:
+      nodes:
+        - key: start
+          entry: true
+          intro: "Ой, вы те самые, кто расследует? Спрашивайте, но быстро."
+          options:
+            - key: ask_time
+              text: "Во сколько это было?"
+              reply: "Где-то около полуночи, я как раз шла домой."
+              next: followup
+            - key: ask_who
+              text: "Вы видели, кто это был?"
+              reply: "Лицо не разглядела, было темно. Но голос помню."
+              next: followup
+        - key: followup
+          intro: "Это всё, что я знаю. Больше мне сказать нечего."
+          options:
+            - key: thanks
+              text: "Спасибо за помощь"
+              reply: "Пожалуйста. Берегите себя."
+
+  - slug: informant
+    name: "Информатор"
+    nickname: "shadow_i"
+    public_lore: "Аноним, пишет только когда сам захочет. Без сценарного диалога — общение только через свободный текст (режимы operator/gpt) или молчание (muted)."
+
+stages:
+  - slug: intro
+    title: "Знакомство"
+    description: "Первое задание квеста — просто чтобы понять, как всё устроено."
+    completion_type: actor
+    triggers_scripted_dialogue: [curator]
+
+  - slug: find_place_and_time
+    title: "Найдите место и время"
+    description: "Разгадайте, где и когда это произошло. Ответ на каждое поле проверяется отдельно, точным совпадением."
+    completion_type: answer
+    requires: [intro]
+    fields:
+      - key: place
+        label: "Место"
+        hint: "где это было"
+        order: 1
+        order_sensitive: true
+        accepted: ["дом"]
+      - key: time
+        label: "Время"
+        hint: "во сколько"
+        order: 2
+        order_sensitive: true
+        accepted: ["полночь"]
+
+  - slug: riddle_keyword
+    title: "Загадка куратора"
+    description: "Назовите кодовое слово, которое куратор упомянул в дневнике. Подойдёт любой ответ, содержащий нужный корень."
+    completion_type: answer
+    requires: [intro]
+    fields:
+      - key: keyword
+        label: "Кодовое слово"
+        hint: "то самое слово из дневника"
+        order: 1
+        order_sensitive: true
+        accepted_contains: ["тень", "полноч"]
+
+  - slug: confirm_ready
+    title: "Готовы продолжить?"
+    description: "Нажмите, когда будете готовы идти дальше. Открывается только после обеих предыдущих веток."
+    completion_type: checkbox
+    requires: [find_place_and_time, riddle_keyword]
+
+  - slug: name_two_items
+    title: "Назовите две улики"
+    description: "Впишите в любом порядке два найденных предмета — оба поля принимают оба варианта."
+    completion_type: answer
+    requires: [confirm_ready]
+    fields:
+      - key: item_a
+        label: "Улика 1"
+        hint: "любая из двух найденных вещей"
+        order: 1
+        order_sensitive: false
+        accepted: ["ключ", "монета"]
+      - key: item_b
+        label: "Улика 2"
+        hint: "вторая из двух найденных вещей"
+        order: 2
+        order_sensitive: false
+        accepted: ["ключ", "монета"]
+
+  - slug: send_evidence_photo
+    title: "Пришлите фото доказательства"
+    description: "Сфотографируйте то, что нашли, и отправьте на проверку оператору."
+    completion_type: manual_review
+    requires: [confirm_ready]
+
+  - slug: finale
+    title: "Финал"
+    description: "Обе ветки пройдены — дело раскрыто. Отмечается вручную актёром на месте."
+    completion_type: actor
+    requires: [name_two_items, send_evidence_photo]
+
+# Телефонные номера (phone_numbers):
+#   number         — строка цифр, как её наберёт команда
+#   character_slug — необязательно, привязка номера к персонажу
+#   phases         — фазы звонка:
+#     key               — локальный id фазы внутри этого номера
+#     entry: true        — ровно одна такая фаза на номер, с неё начинается звонок
+#     audio             — путь/id аудио, которое проигрывается на этой фазе.
+#                          Если рядом лежит файл data/audio/<этот путь> —
+#                          при импорте он загрузится в Supabase Storage и
+#                          проиграется по-настоящему. Если файла нет — строка
+#                          просто покажется текстом (заглушка, пока не готова
+#                          настоящая запись).
+#     requires_password — есть ли на этой фазе ввод пароля
+#     password          — правильный пароль (только если requires_password)
+#     on_success/on_failure — key следующей фазы после верного/неверного пароля;
+#                              не указан = звонок сбрасывается после этой фазы
+#
+# Любой номер, которого нет в этом списке (наберите что угодно другое),
+# даёт один из случайных исходов: "номер не существует" / "недоступен" /
+# "розыгрыш" — см. backend/calls.py: RANDOM_OUTCOMES. Отдельно готовить
+# для этого ничего не нужно.
+phone_numbers:
+  - number: "89998887766"
+    character_slug: curator
+    phases:
+      - key: entry
+        entry: true
+        audio: "calls/curator_intro.mp3"
+        requires_password: true
+        password: "полночь"
+        on_success: success
+        on_failure: failure
+      - key: success
+        audio: "calls/curator_success.mp3"
+      - key: failure
+        audio: "calls/curator_failure.mp3"
+
+  - number: "89991112233"
+    character_slug: witness
+    phases:
+      - key: entry
+        entry: true
+        audio: "calls/witness_intro.mp3"
+
+  - number: "89995554433"
+    character_slug: informant
+    phases:
+      - key: entry
+        entry: true
+        audio: "calls/informant_intro.mp3"
+        requires_password: true
+        password: "восток"
+        on_success: level2
+        on_failure: level1_failure
+      - key: level1_failure
+        audio: "calls/informant_wrong1.mp3"
+      - key: level2
+        audio: "calls/informant_level2.mp3"
+        requires_password: true
+        password: "запад"
+        on_success: level3
+        on_failure: level2_failure
+      - key: level2_failure
+        audio: "calls/informant_wrong2.mp3"
+      - key: level3
+        audio: "calls/informant_final.mp3"
