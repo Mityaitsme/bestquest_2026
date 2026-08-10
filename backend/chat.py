@@ -145,13 +145,33 @@ def trigger_scripted_dialogue(team_id: str, character_id: str) -> None:
 def jump_to_node(team_id: str, character_id: str, node_id: str) -> None:
     """Этап толкает диалог персонажа на конкретный узел (следующий "кусок"
     истории) — см. stage_dialogue_resumes и tasks.py: _fire_dialogue_resumes.
-    В отличие от trigger_scripted_dialogue выше, НЕ трогает режим чата: когда
-    команда увидит новый кусок, решает оператор, вручную включив 'сценарий'
-    через dropdown — это осознанно оставлено полностью ручным действием."""
+    Как и trigger_scripted_dialogue, сразу включает режим 'сценарий' —
+    команда увидит новый кусок сама, без ручного переключения оператором.
+    Между кусками чат стоит в 'operator' (см. dialogue.py: _advance_to),
+    так что это ровно момент, когда сюжет снова "оживает"."""
     client = get_supabase_client()
     client.table("team_dialogue_state").update({"current_node_id": node_id}).eq(
         "team_id", team_id
     ).eq("character_id", character_id).execute()
+    client.table("chats").update({"mode": "scripted"}).eq("team_id", team_id).eq(
+        "character_id", character_id
+    ).execute()
+
+    node = client.table("dialogue_nodes").select("intro_message").eq("id", node_id).execute().data
+    intro = node[0]["intro_message"] if node else ""
+    if intro:
+        chat_rows = (
+            client.table("chats")
+            .select("id")
+            .eq("team_id", team_id)
+            .eq("character_id", character_id)
+            .execute()
+            .data
+        )
+        if chat_rows:
+            client.table("messages").insert(
+                {"chat_id": chat_rows[0]["id"], "sender_type": "character", "content": intro}
+            ).execute()
 
 
 def _get_own_chat(client, chat_id: str, team_id: str) -> dict:

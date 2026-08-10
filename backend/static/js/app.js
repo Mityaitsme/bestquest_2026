@@ -1092,7 +1092,9 @@
   };
   const FAILED_CALL_RESET_MS = 5000;
   const RINGTONE_URL = "/static/audio/ringtone.mp3";
-  const RING_COUNT = 3;
+  // Сам файл ringtone.mp3 уже содержит три гудка внутри себя - проигрываем
+  // его один раз, а не зацикливаем поверх.
+  const RING_COUNT = 1;
 
   let dialedNumber = "";
   let currentPhaseId = null;
@@ -1203,7 +1205,7 @@
     passwordSectionEl.hidden = false;
   }
 
-  function showCallResult(data) {
+  function showCallResult(data, playRingtone) {
     if (failedCallResetTimer) {
       clearTimeout(failedCallResetTimer);
       failedCallResetTimer = null;
@@ -1224,8 +1226,15 @@
       return;
     }
 
-    callStatusEl.textContent = "Соединение…";
-    playRingtoneThen(() => revealConnectedCall(data));
+    // Гудки нужны только на самом первом соединении звонка - после ввода
+    // пароля (переход между фазами внутри уже идущего звонка) сразу
+    // показываем следующую фазу, без повторных гудков.
+    if (playRingtone) {
+      callStatusEl.textContent = "Соединение…";
+      playRingtoneThen(() => revealConnectedCall(data));
+    } else {
+      revealConnectedCall(data);
+    }
   }
 
   dialerCallBtn.addEventListener("click", async () => {
@@ -1241,7 +1250,7 @@
       });
       const data = await response.json();
       if (data.status === "ok") {
-        showCallResult(data);
+        showCallResult(data, true);
       }
     } catch (err) {
       // остаёмся на наборе номера - можно попробовать ещё раз
@@ -1271,7 +1280,7 @@
       });
       const data = await response.json();
       if (data.status === "ok") {
-        showCallResult(data);
+        showCallResult(data, false);
       }
     } catch (err) {
       // остаёмся на текущем экране - можно попробовать ввести пароль ещё раз

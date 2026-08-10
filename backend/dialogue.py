@@ -193,6 +193,11 @@ def choose_option(team_id: str, character_id: str, option_id: str) -> dict:
     _advance_to(client, team_id, character_id, next_node_id)
     if next_node_id is None:
         _complete_stage_if_set(client, team_id, node["completion_stage_id"])
+    elif next_node_id != state["current_node_id"]:
+        # Настоящий переход на другой узел (не зацикливание на том же самом
+        # в ожидании остальных вариантов requires_all_options) - если у
+        # узла есть intro, доставляем его как реплику персонажа.
+        _deliver_node_intro(client, team_id, character_id, next_node_id)
 
     return {
         "reply": reply_message,
@@ -207,17 +212,31 @@ def _advance_to(client, team_id: str, character_id: str, node_id: str | None) ->
 
     if node_id is None:
         # Сценарный "кусок" диалога закончился (следующего узла нет) -
-        # персонаж сам "уходит оффлайн": chat.mode -> muted. Даром
-        # переиспользует уже готовое поведение muted-режима (и у команды —
-        # "нельзя писать", и в списке чатов — статус "оффлайн"), вместо
-        # отдельной ветки под "диалог кончился, но формально ещё scripted".
-        # Оператор всё ещё может вручную переключить режим обратно —
-        # ЭТО единственный способ показать команде следующий кусок истории
-        # (см. stage_dialogue_resumes/jump_to_node в chat.py: этап только
-        # молча передвигает указатель на нужный узел, режим не трогает).
-        client.table("chats").update({"mode": "muted"}).eq("team_id", team_id).eq(
+        # чат переходит в обычный операторский режим (не muted): команда
+        # может писать дальше как в обычный чат, оператор может отвечать
+        # вручную, пока не понадобится следующий кусок истории. Следующий
+        # кусок сам включает scripted обратно (см. chat.jump_to_node) —
+        # не требует ручного переключения оператором.
+        client.table("chats").update({"mode": "operator"}).eq("team_id", team_id).eq(
             "character_id", character_id
         ).execute()
+
+
+def _deliver_node_intro(client, team_id: str, character_id: str, node_id: str) -> None:
+    """Если у узла, на который только что перешёл диалог, задан intro —
+    отправляет его в чат как обычную реплику персонажа. Раньше intro
+    возвращался только в JSON-ответе на GET .../dialogue, а сам фронтенд
+    его нигде не показывал — команда видела кнопки выбора без вопроса,
+    на который они как бы отвечают. Вызывается только при настоящем
+    переходе на другой узел, не на каждый опрос состояния."""
+    node = client.table("dialogue_nodes").select("intro_message").eq("id", node_id).execute().data
+    intro = node[0]["intro_message"] if node else ""
+    if not intro:
+        return
+    chat_id, _ = _get_character_chat(client, team_id, character_id)
+    client.table("messages").insert(
+        {"chat_id": chat_id, "sender_type": REPLY_SENDER, "content": intro}
+    ).execute()
 
 
 def _complete_stage_if_set(client, team_id: str, stage_id: str | None) -> None:
@@ -343,3 +362,5 @@ def resolve_block_post(
         # у is_block_post узла обязательный next. Оставлено для симметрии
         # с choose_option и на случай будущих изменений этого правила.
         _complete_stage_if_set(client, team_id, node["completion_stage_id"])
+    else:
+        _deliver_node_intro(client, team_id, character_id, node["next_node_id"])

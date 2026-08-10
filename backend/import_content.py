@@ -9,8 +9,10 @@
 Идемпотентно: персонажи/этапы/номера обновляются по slug/number, поля — по
 (stage, field_key), фазы звонка — по (номер, content_key), узлы диалога —
 по (персонаж, content_key), варианты — по (узел, content_key). Принятые
-ответы поля и связи success/failure фаз полностью пересоздаются из файла
-при каждом запуске. НИЧЕГО не удаляется автоматически: если убрать этап,
+ответы поля, рёбра графа (requires), триггеры/резюме диалога и связи
+success/failure фаз полностью пересоздаются из файла при каждом запуске —
+если у этапа сократили requires, старые предпосылки в базе не остаются.
+НИЧЕГО кроме этого не удаляется автоматически: если убрать целиком этап,
 персонажа, номер или узел диалога из YAML, в базе он останется (у команд
 может быть привязанный прогресс/чаты) — в конце скрипт только предупредит
 о таких "осиротевших" этапах/персонажах/номерах (не про отдельные узлы
@@ -542,10 +544,18 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
     for stage in stages:
         stage_id = slug_to_id[stage["slug"]]
 
-        for prerequisite_slug in stage.get("requires", []):
-            client.table("stage_edges").upsert(
-                {"from_stage_id": slug_to_id[prerequisite_slug], "to_stage_id": stage_id},
-                on_conflict="from_stage_id,to_stage_id",
+        # Полностью пересоздаём рёбра из этого этапа при каждом запуске (как
+        # уже делают stage_dialogue_triggers/stage_dialogue_resumes ниже) —
+        # иначе если requires у этапа сократили в YAML, старые предпосылки
+        # остаются висеть в базе и продолжают требоваться командой.
+        client.table("stage_edges").delete().eq("to_stage_id", stage_id).execute()
+        prerequisite_slugs = stage.get("requires", [])
+        if prerequisite_slugs:
+            client.table("stage_edges").insert(
+                [
+                    {"from_stage_id": slug_to_id[prerequisite_slug], "to_stage_id": stage_id}
+                    for prerequisite_slug in prerequisite_slugs
+                ]
             ).execute()
 
         trigger_character_ids = [

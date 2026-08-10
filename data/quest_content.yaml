@@ -463,7 +463,7 @@ stages:
     requires: [ch3_swap_backpacks]
 
   - slug: ch3_find_what_christopher_sought
-    title: "Найдите то, что искал Кристофер"
+    title: "Найдите то, что искал незнакомец"
     completion_type: manual_review
     requires: [ch3_repeat_actions]
 
@@ -500,7 +500,7 @@ stages:
     title: "Ознакомьтесь с архивными данными"
     description: "Изучите все документы, после чего сфотографируйте их и отправьте"
     completion_type: manual_review
-    requires: [ch3_decode_note_1, ch3_decode_note_2, ch3_decode_note_3, ch4_open_cache]
+    requires: [ch4_meeting_time]
     resumes_dialogue_at: {curator: ch4_curator_intro}
 
   - slug: ch4_talk_to_curator
@@ -607,6 +607,7 @@ stages:
 
   - slug: ch8_go_to_library
     title: "Направляйтесь в библиотеку им. Ленина"
+    description: "Сфотографируйтесь рядом с ней, когда придёте!"
     completion_type: manual_review
     requires: [ch8_examine_bomb_blueprints]
 
@@ -647,6 +648,12 @@ stages:
     title: "Обезвредьте бомбу"
     completion_type: actor
     requires: [ch8_examine_bomb_blueprints, ch9_carry_bomb_away]
+
+  - slug: ch9_congratulations
+    title: "Поздравляем с прохождением квеста!"
+    description: "Надеемся, вам понравилось :)"
+    completion_type: checkbox
+    requires: [ch9_defuse_bomb]
 
 # Телефонные номера (phone_numbers):
 #   number         — строка цифр, как её наберёт команда
