@@ -142,17 +142,95 @@
 #       resumes_dialogue_at: {curator: chunk2_start}
 #
 # Это боевой контент квеста — заполняется по-настоящему, для реального
-# события. Тестовый контент из прошлых стадий (демонстрирует каждую фичу:
-# block-post, requires_all_options, order-insensitive поля и т.д.) сохранён
-# отдельно как справочник по синтаксису — см. data/quest_content.example.yaml.
+# события.
 #
 # Запуск загрузки:
 #   cd backend && python import_content.py
 # (по умолчанию читает ../data/quest_content.yaml)
 
-characters: []
+characters:
+  - slug: curator
+    name: "Куратор"
+    nickname: "mark1979"
+    dialogue:
+      nodes:
+        # --- Глава 1: первый контакт, кусок 1 ---
+        - key: ch1_greet
+          entry: true
+          options:
+            - key: hello
+              text: "Здравствуйте! Мы по поводу Вашего поста в r/LostRubiks"
+              reply: "О, добрый день! Рад, что кто-то откликнулся. У вас тоже украли кубик рубика?"
+              next: ch1_confirm_theft
+        - key: ch1_confirm_theft
+          options:
+            - key: "yes"
+              text: "Да"
+              reply: "Понятно…\nИ что же, вы серьезно настроены?"
+              next: ch1_serious
+        - key: ch1_serious
+          options:
+            - key: "yes"
+              text: "Да"
+              reply: "Хорошо. Тогда передам вам всё, что мне удалось найти по этому делу на данный момент. Где вы сейчас находитесь?"
+              next: ch1_location
+            - key: "no"
+              text: "Нет"
+              reply: "И что же вы тогда мне пишете?)"
+              next: ch1_serious
+        - key: ch1_location
+          completes_stage: ch1_contact_curator
+          options:
+            - key: here
+              text: "Воробьёвы горы"
+              reply: "Отлично. Подождите немного…"
+              # next не указан -> кусок 1 закончен, ch1_contact_curator готов
 
-stages: []
+stages:
+  - slug: ch1_watch_cameras
+    title: "Посмотрите записи с камер видеонаблюдения"
+    description: "Что необычного вы заметили?"
+    completion_type: answer
+    chapter: "Глава 1. Начало"
+    fields:
+      - key: answer
+        label: "Ответ"
+        order: 1
+        order_sensitive: true
+        accepted_contains: ["кубик", "рубик"]
+
+  - slug: ch1_investigate_theft
+    title: "Разберитесь с похищением"
+    description: "Получите зацепку: где стоит продолжить расследование?"
+    completion_type: answer
+    requires: [ch1_watch_cameras]
+    fields:
+      - key: answer
+        label: "Ответ"
+        order: 1
+        order_sensitive: true
+        accepted_contains: ["реддит", "reddit", "LostRubiks"]
+
+  - slug: ch1_contact_curator
+    title: "Свяжитесь с создателем реддит-сообщества"
+    completion_type: dialogue
+    requires: [ch1_investigate_theft]
+
+  - slug: ch1_get_photos
+    title: "Получите фотографии"
+    completion_type: checkbox
+    requires: [ch1_contact_curator]
+
+  - slug: ch1_find_clue
+    title: "Найдите зацепку на фотографиях"
+    completion_type: answer
+    requires: [ch1_get_photos]
+    fields:
+      - key: answer
+        label: "Ответ"
+        order: 1
+        order_sensitive: true
+        accepted_contains: ["кси", "такси", "номер", "б235кв"]
 
 # Телефонные номера (phone_numbers):
 #   number         — строка цифр, как её наберёт команда
