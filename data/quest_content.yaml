@@ -203,6 +203,43 @@ characters:
               reply: "Ну ладно. Я искал, что он значит, всеми возможными способами, но ничего не нашел…\nЗнаете, у меня есть план. Мне кажется, содержимое его рюкзака может помочь нам в расследовании. Курьер передаст вам абсолютно идентичный рюкзак, а вы подкараульте, когда он будет выходить из дома, незаметно проследите, чем он занимается, а потом подмените его рюкзак. Посмотрим, что скрывает наш вор кубиков!\nС Курьером встретьтесь здесь: https://yandex.ru/maps/-/CTS1NRKv"
               # next не указан -> кусок 2 закончен, ch2_talk_to_curator готов
 
+        # --- Глава 4→5: кусок 3, подключается тихо через ch4_archive_data
+        # (resumes_dialogue_at). Узел с requires_all_options — команда должна
+        # перебрать все 5 вариантов (в любом порядке), у каждого своя
+        # короткая подпись на кнопке (text) и полное сообщение в чат (sent) ---
+        - key: ch4_curator_intro
+          intro: "Ну как вы там?"
+          options:
+            - key: sect
+              text: "Этого человека зовут Кристофер, и он - часть секты!"
+              reply: "СЕКТЫ??? Это становится чересчур странно… А что за секта?"
+              next: ch4_curator_sect_menu
+        - key: ch4_curator_sect_menu
+          requires_all_options: true
+          completes_stage: ch4_talk_to_curator
+          options:
+            - key: meeting
+              text: "Собрание"
+              sent: "Сегодня у секты будет собрание в парке Сокольники."
+              reply: "Интересно… что-то еще?"
+            - key: rituals
+              text: "Обряды"
+              sent: "У них есть собрания, на которые они все ходят в мантиях и скрывают свое лицо даже друг от друга!"
+              reply: "Интересно… что-то еще?"
+            - key: alphabet
+              text: "Алфавит"
+              sent: "Мы расшифровали их секретный алфавит."
+              reply: "Интересно… что-то еще?"
+            - key: icann
+              text: "ICANN"
+              sent: "Эта секта ищет бункер ICANN."
+              reply: "Интересно… что-то еще?"
+            - key: internet
+              text: "Интернет"
+              sent: "Сектанты ненавидят интернет и считают, что без него мир будет лучше."
+              reply: "Понятно.\nНадо обязательно воспользоваться возможностью и внедриться на их собрание! Давайте поступим так. Я сделаю вам такую же мантию, как у них, но установлю на нее камеру. Курьер передаст ее, кто-то из вас проберется на собрание - и мы узнаем, к чему им наши кубики рубика, и что они задумали!"
+              # next не указан на узле -> кусок 3 закончен, ch4_talk_to_curator готов
+
   - slug: pavel_ksi
     name: "Павел Кси"
     nickname: "pavel_ksi"
@@ -382,6 +419,47 @@ stages:
     title: "Найдите то, что искал Кристофер"
     completion_type: manual_review
     requires: [ch3_repeat_actions]
+
+  - slug: ch4_open_cache
+    title: "Отправляйтесь в тайник и вскройте его"
+    description: "Адрес вы найдете в памятке."
+    completion_type: checkbox
+    chapter: "Глава 4. Тайник"
+    requires: [ch3_examine_note, ch3_find_what_christopher_sought]
+
+  - slug: ch4_meeting_time
+    title: "Выясните время и место встречи"
+    description: "Место введите с точность до четырёх знаков после точки"
+    completion_type: answer
+    requires: [ch3_decode_note_1, ch3_decode_note_2, ch3_decode_note_3, ch4_open_cache]
+    fields:
+      - key: latitude
+        label: "Широта"
+        order: 1
+        order_sensitive: true
+        accepted: ["55.7980"]
+      - key: longitude
+        label: "Долгота"
+        order: 2
+        order_sensitive: true
+        accepted: ["37.6635"]
+      - key: time
+        label: "Время"
+        order: 3
+        order_sensitive: true
+        accepted: ["20:00"]
+
+  - slug: ch4_archive_data
+    title: "Ознакомьтесь с архивными данными"
+    description: "Изучите все документы, после чего сфотографируйте их и отправьте"
+    completion_type: manual_review
+    requires: [ch3_decode_note_1, ch3_decode_note_2, ch3_decode_note_3, ch4_open_cache]
+    resumes_dialogue_at: {curator: ch4_curator_intro}
+
+  - slug: ch4_talk_to_curator
+    title: "Поговорите с Куратором"
+    completion_type: dialogue
+    requires: [ch4_archive_data]
 
 # Телефонные номера (phone_numbers):
 #   number         — строка цифр, как её наберёт команда
