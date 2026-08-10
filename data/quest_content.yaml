@@ -669,4 +669,17 @@ stages:
 # даёт один из случайных исходов: "номер не существует" / "недоступен" /
 # "розыгрыш" — см. backend/calls.py: RANDOM_OUTCOMES. Отдельно готовить
 # для этого ничего не нужно.
-phone_numbers: []
+phone_numbers:
+  - number: "89859181998"
+    phases:
+      - key: entry
+        entry: true
+        audio: "question.mp3"
+        requires_password: true
+        password: "icann"
+        on_success: correct
+        on_failure: wrong
+      - key: correct
+        audio: "correct.mp3"
+      - key: wrong
+        audio: "wrong.mp3"
