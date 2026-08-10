@@ -261,6 +261,32 @@ characters:
               reply: "ВДНХ? Неожиданно…\nСлушайте, я хотел попросить вас об одной вещи. Как вы знаете, Курьер отправился следить за главарем секты. Проблема в том, что начиная с какого-то момента он перестал выходить на связь… видимо, там, где прервался сигнал, стоят какие-то глушилки секты…\nНадо его найти. Во-первых, без него я не знаю, как связаться с ICANN, во-вторых нужно понять, что задумал их главарь, ну а в-третьих хороший он человек, нельзя бросать его в беде… Найдите его, пожалуйста!"
               # next не указан -> кусок 4 закончен, ch6_talk_to_curator готов
 
+        # --- Глава 7→8: кусок 5 (последний), подключается тихо через
+        # ch7_escape_unnoticed (resumes_dialogue_at). Здесь команда говорит
+        # первой (intro не нужен) — Куратор реагирует на найденное тело ---
+        - key: ch7_curator_grief_start
+          options:
+            - key: died
+              text: "Он погиб…"
+              reply: "…\n\nНет слов…"
+              next: ch7_curator_grief_menu
+        - key: ch7_curator_grief_menu
+          completes_stage: ch7_talk_to_curator
+          options:
+            - key: condolences
+              text: "Соболезнования"
+              sent: "Мы приносим наши соболезнования…"
+              reply: "Это так ужасно… Господи, как это ужасно…\nПрошу вас, доведите дело до конца. Нельзя, чтобы вышло, что он умер напрасно… Спасите интернет!"
+            - key: inspiration
+              text: "Воодушевление"
+              sent: "Он погиб, но он выполнил своё задание. Он герой!"
+              reply: "Это так ужасно… Господи, как это ужасно…\nПрошу вас, доведите дело до конца. Нельзя, чтобы вышло, что он умер напрасно… Спасите интернет!"
+            - key: icann
+              text: "ICANN"
+              sent: "Оказывается, он был агентом ICANN… теперь понятно, почему ему была так важна эта миссия…"
+              reply: "Это так ужасно… Господи, как это ужасно…\nПрошу вас, доведите дело до конца. Нельзя, чтобы вышло, что он умер напрасно… Спасите интернет!"
+              # next не указан на любом варианте -> кусок 5 закончен, ch7_talk_to_curator готов
+
   - slug: pavel_ksi
     name: "Павел Кси"
     nickname: "pavel_ksi"
@@ -549,6 +575,78 @@ stages:
     title: "Поговорите с Куратором"
     completion_type: dialogue
     requires: [ch6_find_icann_bunker]
+
+  - slug: ch7_visit_signal_loss_point
+    title: "Выполните просьбу Куратора"
+    description: "Отправляйтесь на точку, где была потеряна связь с Курьером"
+    completion_type: manual_review
+    chapter: "Глава 7. В поисках Курьера"
+    requires: [ch6_talk_to_curator]
+
+  - slug: ch7_find_courier
+    title: "Найдите Курьера"
+    completion_type: actor
+    requires: [ch7_visit_signal_loss_point]
+
+  - slug: ch7_escape_unnoticed
+    title: "Выберитесь из подъезда незамеченными"
+    completion_type: actor
+    requires: [ch7_find_courier]
+    resumes_dialogue_at: {curator: ch7_curator_grief_start}
+
+  - slug: ch7_talk_to_curator
+    title: "Поговорите с Куратором"
+    completion_type: dialogue
+    requires: [ch7_escape_unnoticed]
+
+  - slug: ch8_examine_bomb_blueprints
+    title: "Исследуйте чертежи бомбы"
+    completion_type: checkbox
+    chapter: "Глава 8. ICANN"
+    requires: [ch7_talk_to_curator]
+
+  - slug: ch8_go_to_library
+    title: "Направляйтесь в библиотеку им. Ленина"
+    completion_type: manual_review
+    requires: [ch8_examine_bomb_blueprints]
+
+  - slug: ch8_get_library_card
+    title: "Получите электронный читательский билет"
+    description: "Используйте электронные табло у входа. Вам пригодится паспорт!"
+    completion_type: checkbox
+    requires: [ch8_go_to_library]
+
+  - slug: ch8_contact_icann
+    title: "Свяжитесь с ICANN"
+    description: "Воспользуйтесь одним из компьютеров библиотеки. Они находятся в общественном доступе"
+    completion_type: checkbox
+    requires: [ch8_get_library_card]
+
+  - slug: ch9_meet_icann_agents
+    title: "Придите на встречу с агентами ICANN"
+    completion_type: actor
+    chapter: "Глава 9. Финал"
+    requires: [ch8_contact_icann]
+
+  - slug: ch9_neutralize_cultists_1
+    title: "Обезвредьте сектантов (1/2)"
+    completion_type: actor
+    requires: [ch9_meet_icann_agents]
+
+  - slug: ch9_neutralize_cultists_2
+    title: "Обезвредьте сектантов (2/2)"
+    completion_type: actor
+    requires: [ch9_meet_icann_agents]
+
+  - slug: ch9_carry_bomb_away
+    title: "Найдите бомбу и унесите ее на безопасное расстояние от бункера"
+    completion_type: actor
+    requires: [ch9_meet_icann_agents]
+
+  - slug: ch9_defuse_bomb
+    title: "Обезвредьте бомбу"
+    completion_type: actor
+    requires: [ch8_examine_bomb_blueprints, ch9_carry_bomb_away]
 
 # Телефонные номера (phone_numbers):
 #   number         — строка цифр, как её наберёт команда
