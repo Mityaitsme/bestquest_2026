@@ -137,7 +137,7 @@ def choose_option(team_id: str, character_id: str, option_id: str) -> dict:
 
     node = (
         client.table("dialogue_nodes")
-        .select("requires_all_options, next_node_id, is_block_post, completion_stage_id")
+        .select("requires_all_options, next_node_id, is_block_post, completion_stage_id, final_reply")
         .eq("id", state["current_node_id"])
         .execute()
         .data[0]
@@ -151,9 +151,8 @@ def choose_option(team_id: str, character_id: str, option_id: str) -> dict:
     client.table("messages").insert(
         {"chat_id": chat_id, "sender_type": CHOSEN_OPTION_SENDER, "content": sent_message}
     ).execute()
-    client.table("messages").insert(
-        {"chat_id": chat_id, "sender_type": REPLY_SENDER, "content": option["reply_message"]}
-    ).execute()
+
+    reply_message = option["reply_message"]
 
     if node["requires_all_options"]:
         client.table("team_dialogue_used_options").upsert(
@@ -177,16 +176,26 @@ def choose_option(team_id: str, character_id: str, option_id: str) -> dict:
             .execute()
             .data
         }
-        next_node_id = node["next_node_id"] if all_option_ids <= used_ids else state["current_node_id"]
+        exhausted = all_option_ids <= used_ids
+        if exhausted and node.get("final_reply"):
+            # Реплика при закрывающем набор выборе не привязана к конкретному
+            # варианту — её получает тот вариант, который команда выбрала
+            # последним, каким бы он ни был (см. YAML-ключ узла final_reply).
+            reply_message = node["final_reply"]
+        next_node_id = node["next_node_id"] if exhausted else state["current_node_id"]
     else:
         next_node_id = option["next_node_id"]
+
+    client.table("messages").insert(
+        {"chat_id": chat_id, "sender_type": REPLY_SENDER, "content": reply_message}
+    ).execute()
 
     _advance_to(client, team_id, character_id, next_node_id)
     if next_node_id is None:
         _complete_stage_if_set(client, team_id, node["completion_stage_id"])
 
     return {
-        "reply": option["reply_message"],
+        "reply": reply_message,
         "state": get_dialogue_state(team_id, character_id),
     }
 

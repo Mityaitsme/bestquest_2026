@@ -111,6 +111,11 @@ def validate_dialogues(characters: list[dict[str, Any]], stage_slugs: set[str]) 
                     f"Персонаж '{slug}', узел '{key}': is_block_post узел должен "
                     "указывать next (куда идти после ответа оператора)"
                 )
+            if node.get("final_reply") and not node.get("requires_all_options"):
+                raise ContentError(
+                    f"Персонаж '{slug}', узел '{key}': final_reply имеет смысл только "
+                    "при requires_all_options: true"
+                )
 
             completes_stage = node.get("completes_stage")
             if completes_stage:
@@ -468,6 +473,7 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
                         "is_start": node.get("entry", False),
                         "requires_all_options": node.get("requires_all_options", False),
                         "is_block_post": node.get("is_block_post", False),
+                        "final_reply": node.get("final_reply"),
                     },
                     on_conflict="character_id,content_key",
                 )
