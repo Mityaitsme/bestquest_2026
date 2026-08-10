@@ -298,6 +298,91 @@ stages:
     completion_type: dialogue
     requires: [ch2_track_address]
 
+  - slug: ch3_stakeout
+    title: "Отправляйтесь к дому незнакомца"
+    description: "Спрячьтесь неподалеку и наблюдайте за подъездом"
+    completion_type: manual_review
+    chapter: "Глава 3. К.Р."
+    requires: [ch2_talk_to_curator]
+
+  - slug: ch3_get_backpack
+    title: "Получите от Курьера рюкзак"
+    completion_type: actor
+    requires: [ch2_talk_to_curator]
+
+  - slug: ch3_follow_stranger
+    title: "Незаметно следите за незнакомцем"
+    description: "Увидев его выходящим из дома, следуйте за ним на безопасном расстоянии и запоминайте всё, что он делает, не попадаясь ему на глаза"
+    completion_type: actor
+    requires: [ch3_stakeout, ch3_get_backpack]
+
+  - slug: ch3_swap_backpacks
+    title: "Подмените рюкзаки"
+    description: "Незнакомец не должен ничего заметить!"
+    completion_type: actor
+    requires: [ch3_follow_stranger]
+
+  - slug: ch3_learn_name
+    title: "Узнайте, как зовут незнакомца"
+    completion_type: answer
+    requires: [ch3_swap_backpacks]
+    fields:
+      - key: answer
+        label: "Ответ"
+        order: 1
+        order_sensitive: true
+        accepted: ["кристофер"]
+
+  - slug: ch3_examine_note
+    title: "Исследуйте памятку"
+    completion_type: answer
+    requires: [ch3_swap_backpacks]
+    fields:
+      - key: field_1
+        label: "Поле 1"
+        order: 1
+        order_sensitive: false
+        accepted: ["крупской, 8к1", "89859181998", "ячейка 6"]
+      - key: field_2
+        label: "Поле 2"
+        order: 2
+        order_sensitive: false
+        accepted: ["крупской, 8к1", "89859181998", "ячейка 6"]
+      - key: field_3
+        label: "Поле 3"
+        order: 3
+        order_sensitive: false
+        accepted: ["крупской, 8к1", "89859181998", "ячейка 6"]
+
+  - slug: ch3_decode_note_1
+    title: "Расшифруйте памятку (1/3)"
+    description: "Подпишите настоящие слова рядом и отправьте фотографию первой страницы"
+    completion_type: manual_review
+    requires: [ch3_swap_backpacks, ch3_learn_name]
+
+  - slug: ch3_decode_note_2
+    title: "Расшифруйте памятку (2/3)"
+    description: "Подпишите настоящие слова рядом и отправьте фотографию второй страницы"
+    completion_type: manual_review
+    requires: [ch3_swap_backpacks, ch3_learn_name]
+
+  - slug: ch3_decode_note_3
+    title: "Расшифруйте памятку (3/3)"
+    description: "Подпишите настоящие слова рядом и отправьте фотографию третьей страницы"
+    completion_type: manual_review
+    requires: [ch3_swap_backpacks, ch3_learn_name]
+
+  - slug: ch3_repeat_actions
+    title: "Повторите действия незнакомца"
+    description: "Всё, что он делал начиная с момента выхода из дома и заканчивая встречей с вами"
+    completion_type: checkbox
+    requires: [ch3_swap_backpacks]
+
+  - slug: ch3_find_what_christopher_sought
+    title: "Найдите то, что искал Кристофер"
+    completion_type: manual_review
+    requires: [ch3_repeat_actions]
+
 # Телефонные номера (phone_numbers):
 #   number         — строка цифр, как её наберёт команда
 #   character_slug — необязательно, привязка номера к персонажу
