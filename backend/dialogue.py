@@ -137,7 +137,7 @@ def choose_option(team_id: str, character_id: str, option_id: str) -> dict:
 
     node = (
         client.table("dialogue_nodes")
-        .select("requires_all_options, next_node_id, is_block_post")
+        .select("requires_all_options, next_node_id, is_block_post, completion_stage_id")
         .eq("id", state["current_node_id"])
         .execute()
         .data[0]
@@ -147,8 +147,9 @@ def choose_option(team_id: str, character_id: str, option_id: str) -> dict:
         # это подстраховка от рассинхронизации состояния на клиенте.
         raise DialogueError("Этот узел ждёт ответа оператора, вариант выбрать нельзя")
 
+    sent_message = option.get("sent_message") or option["option_text"]
     client.table("messages").insert(
-        {"chat_id": chat_id, "sender_type": CHOSEN_OPTION_SENDER, "content": option["option_text"]}
+        {"chat_id": chat_id, "sender_type": CHOSEN_OPTION_SENDER, "content": sent_message}
     ).execute()
     client.table("messages").insert(
         {"chat_id": chat_id, "sender_type": REPLY_SENDER, "content": option["reply_message"]}
@@ -181,6 +182,8 @@ def choose_option(team_id: str, character_id: str, option_id: str) -> dict:
         next_node_id = option["next_node_id"]
 
     _advance_to(client, team_id, character_id, next_node_id)
+    if next_node_id is None:
+        _complete_stage_if_set(client, team_id, node["completion_stage_id"])
 
     return {
         "reply": option["reply_message"],
@@ -194,29 +197,26 @@ def _advance_to(client, team_id: str, character_id: str, node_id: str | None) ->
     ).eq("character_id", character_id).execute()
 
     if node_id is None:
-        # Сценарный диалог закончился (следующего узла нет) - персонаж сам
-        # "уходит оффлайн": chat.mode -> muted. Даром переиспользует уже
-        # готовое поведение muted-режима (и у команды — "нельзя писать", и
-        # в списке чатов — статус "оффлайн"), вместо отдельной ветки под
-        # "диалог кончился, но формально ещё scripted". Оператор всё ещё
-        # может вручную переключить режим обратно, discovered не откатывается.
+        # Сценарный "кусок" диалога закончился (следующего узла нет) -
+        # персонаж сам "уходит оффлайн": chat.mode -> muted. Даром
+        # переиспользует уже готовое поведение muted-режима (и у команды —
+        # "нельзя писать", и в списке чатов — статус "оффлайн"), вместо
+        # отдельной ветки под "диалог кончился, но формально ещё scripted".
+        # Оператор всё ещё может вручную переключить режим обратно —
+        # ЭТО единственный способ показать команде следующий кусок истории
+        # (см. stage_dialogue_resumes/jump_to_node в chat.py: этап только
+        # молча передвигает указатель на нужный узел, режим не трогает).
         client.table("chats").update({"mode": "muted"}).eq("team_id", team_id).eq(
             "character_id", character_id
         ).execute()
-        _complete_linked_stage(client, team_id, character_id)
 
 
-def _complete_linked_stage(client, team_id: str, character_id: str) -> None:
-    """Если у персонажа задан completion_stage_id (YAML-ключ персонажа
-    completes_stage_on_dialogue_end) — конец его сценарного диалога сам
-    отмечает этот этап выполненным для команды, без участия актёра. Молча
-    ничего не делает, если этап сейчас не в статусе 'available' (например,
-    уже выполнен другим способом или граф ещё не дошёл до него) — сбой этой
-    привязки не должен ронять сам диалог."""
-    character = (
-        client.table("characters").select("completion_stage_id").eq("id", character_id).execute().data
-    )
-    stage_id = character[0]["completion_stage_id"] if character else None
+def _complete_stage_if_set(client, team_id: str, stage_id: str | None) -> None:
+    """Если узел, на котором закончился этот "кусок" диалога, размечен
+    (YAML-ключ узла completes_stage) — сам отмечает соответствующий этап
+    выполненным для команды, без участия актёра. Молча ничего не делает,
+    если этап сейчас не в статусе 'available' (например, уже выполнен другим
+    способом) — сбой этой привязки не должен ронять сам диалог."""
     if not stage_id:
         return
 
@@ -329,3 +329,8 @@ def resolve_block_post(
     ).execute()
 
     _advance_to(client, team_id, character_id, node["next_node_id"])
+    if node["next_node_id"] is None:
+        # На практике недостижимо: валидация (import_content.py) требует
+        # у is_block_post узла обязательный next. Оставлено для симметрии
+        # с choose_option и на случай будущих изменений этого правила.
+        _complete_stage_if_set(client, team_id, node["completion_stage_id"])

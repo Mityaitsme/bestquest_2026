@@ -50,7 +50,7 @@ def load_content(path: Path) -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
-def validate_characters(characters: list[dict[str, Any]], stage_slugs: set[str]) -> None:
+def validate_characters(characters: list[dict[str, Any]]) -> None:
     seen_slugs: set[str] = set()
     seen_nicknames: set[str] = set()
 
@@ -70,15 +70,13 @@ def validate_characters(characters: list[dict[str, Any]], stage_slugs: set[str])
             raise ContentError(f"Повторяющийся nickname персонажа: {nickname}")
         seen_nicknames.add(nickname)
 
-        completion_stage_slug = character.get("completes_stage_on_dialogue_end")
-        if completion_stage_slug and completion_stage_slug not in stage_slugs:
-            raise ContentError(
-                f"Персонаж '{slug}': completes_stage_on_dialogue_end ссылается "
-                f"на неизвестный этап '{completion_stage_slug}'"
-            )
 
+def validate_dialogues(characters: list[dict[str, Any]], stage_slugs: set[str]) -> set[str]:
+    """Возвращает множество slug'ов этапов, на которые ссылается хотя бы один
+    узел через completes_stage — используется в validate_stages для
+    перекрёстной проверки (см. там же)."""
+    dialogue_completion_stage_slugs: set[str] = set()
 
-def validate_dialogues(characters: list[dict[str, Any]]) -> None:
     for character in characters:
         dialogue = character.get("dialogue")
         if not dialogue:
@@ -114,6 +112,15 @@ def validate_dialogues(characters: list[dict[str, Any]]) -> None:
                     "указывать next (куда идти после ответа оператора)"
                 )
 
+            completes_stage = node.get("completes_stage")
+            if completes_stage:
+                if completes_stage not in stage_slugs:
+                    raise ContentError(
+                        f"Персонаж '{slug}', узел '{key}': completes_stage ссылается "
+                        f"на неизвестный этап '{completes_stage}'"
+                    )
+                dialogue_completion_stage_slugs.add(completes_stage)
+
             options = node.get("options", [])
             if not options:
                 raise ContentError(f"Персонаж '{slug}', узел '{key}': нет options")
@@ -144,11 +151,14 @@ def validate_dialogues(characters: list[dict[str, Any]]) -> None:
                 f"(entry: true), сейчас {entry_count}"
             )
 
+    return dialogue_completion_stage_slugs
+
 
 def validate_stages(
     stages: list[dict[str, Any]],
     character_slugs: set[str],
     dialogue_completion_stage_slugs: set[str],
+    character_node_keys: dict[str, set[str]],
 ) -> None:
     all_slugs = {stage.get("slug") for stage in stages}
     seen_slugs: set[str] = set()
@@ -173,14 +183,13 @@ def validate_stages(
 
         if completion_type == "dialogue" and slug not in dialogue_completion_stage_slugs:
             raise ContentError(
-                f"Этап '{slug}': completion_type='dialogue', но ни один персонаж "
-                "не ссылается на него через completes_stage_on_dialogue_end — "
-                "этап никогда не завершится"
+                f"Этап '{slug}': completion_type='dialogue', но ни один узел диалога "
+                "не ссылается на него через completes_stage — этап никогда не завершится"
             )
         if slug in dialogue_completion_stage_slugs and completion_type != "dialogue":
             raise ContentError(
-                f"Этап '{slug}': на него ссылается completes_stage_on_dialogue_end "
-                f"персонажа, но completion_type='{completion_type}' (должен быть 'dialogue')"
+                f"Этап '{slug}': на него ссылается completes_stage узла диалога, "
+                f"но completion_type='{completion_type}' (должен быть 'dialogue')"
             )
 
         fields = stage.get("fields", [])
@@ -207,6 +216,18 @@ def validate_stages(
                 raise ContentError(
                     f"Этап '{slug}': triggers_scripted_dialogue ссылается на "
                     f"неизвестного персонажа '{character_slug}'"
+                )
+
+        for character_slug, node_key in stage.get("resumes_dialogue_at", {}).items():
+            if character_slug not in character_slugs:
+                raise ContentError(
+                    f"Этап '{slug}': resumes_dialogue_at ссылается на "
+                    f"неизвестного персонажа '{character_slug}'"
+                )
+            if node_key not in character_node_keys.get(character_slug, set()):
+                raise ContentError(
+                    f"Этап '{slug}': resumes_dialogue_at['{character_slug}'] ссылается "
+                    f"на неизвестный узел диалога '{node_key}'"
                 )
 
 
@@ -384,16 +405,17 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
     stages = data.get("stages", [])
     phone_numbers = data.get("phone_numbers", [])
     stage_slugs = {stage.get("slug") for stage in stages}
-    dialogue_completion_stage_slugs = {
-        character["completes_stage_on_dialogue_end"]
+    character_slugs = {character["slug"] for character in characters}
+    character_node_keys = {
+        character["slug"]: {
+            node.get("key") for node in character.get("dialogue", {}).get("nodes", [])
+        }
         for character in characters
-        if character.get("completes_stage_on_dialogue_end")
     }
-    validate_characters(characters, stage_slugs)
-    validate_dialogues(characters)
-    validate_stages(
-        stages, {character["slug"] for character in characters}, dialogue_completion_stage_slugs
-    )
+
+    validate_characters(characters)
+    dialogue_completion_stage_slugs = validate_dialogues(characters, stage_slugs)
+    validate_stages(stages, character_slugs, dialogue_completion_stage_slugs, character_node_keys)
     validate_phone_numbers(phone_numbers)
 
     client = get_supabase_client()
@@ -418,6 +440,13 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
         print(f"персонаж: {character['slug']}")
 
     character_start_node_id: dict[str, str] = {}
+    # (character_slug, node_key) -> node_id, для resumes_dialogue_at этапов
+    # ниже (нужны id узлов ЛЮБОГО персонажа, не только текущего в цикле).
+    all_node_ids: dict[tuple[str, str], str] = {}
+    # (node_id, stage_slug) из completes_stage узлов — id этапа проставим
+    # отдельным проходом ниже, когда этапы уже будут существовать.
+    pending_node_completions: list[tuple[str, str]] = []
+
     for character in characters:
         dialogue = character.get("dialogue")
         if not dialogue:
@@ -446,8 +475,11 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
                 .data[0]
             )
             key_to_node_id[node["key"]] = row["id"]
+            all_node_ids[(character["slug"], node["key"])] = row["id"]
             if node.get("entry"):
                 character_start_node_id[character["slug"]] = row["id"]
+            if node.get("completes_stage"):
+                pending_node_completions.append((row["id"], node["completes_stage"]))
 
         # Второй проход: node.next_node_id (для requires_all_options) и все опции.
         for node in nodes:
@@ -465,6 +497,7 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
                         "content_key": option["key"],
                         "option_text": option["text"],
                         "reply_message": option["reply"],
+                        "sent_message": option.get("sent"),
                         "next_node_id": key_to_node_id.get(option.get("next")),
                     },
                     on_conflict="node_id,content_key",
@@ -484,6 +517,7 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
                     "title": stage["title"],
                     "description": stage.get("description", ""),
                     "completion_type": stage.get("completion_type", "actor"),
+                    "chapter": stage.get("chapter"),
                 },
                 on_conflict="slug",
             )
@@ -493,11 +527,10 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
         slug_to_id[stage["slug"]] = row["id"]
         print(f"этап: {stage['slug']}")
 
-    for character in characters:
-        completion_stage_slug = character.get("completes_stage_on_dialogue_end")
-        client.table("characters").update(
-            {"completion_stage_id": slug_to_id.get(completion_stage_slug) if completion_stage_slug else None}
-        ).eq("id", character_slug_to_id[character["slug"]]).execute()
+    for node_id, stage_slug in pending_node_completions:
+        client.table("dialogue_nodes").update(
+            {"completion_stage_id": slug_to_id[stage_slug]}
+        ).eq("id", node_id).execute()
 
     stage_dialogue_triggers: dict[str, list[str]] = {}
     for stage in stages:
@@ -521,6 +554,20 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
                 ]
             ).execute()
             stage_dialogue_triggers[stage_id] = trigger_character_ids
+
+        client.table("stage_dialogue_resumes").delete().eq("stage_id", stage_id).execute()
+        resumes = stage.get("resumes_dialogue_at", {})
+        if resumes:
+            client.table("stage_dialogue_resumes").insert(
+                [
+                    {
+                        "stage_id": stage_id,
+                        "character_id": character_slug_to_id[character_slug],
+                        "target_node_id": all_node_ids[(character_slug, node_key)],
+                    }
+                    for character_slug, node_key in resumes.items()
+                ]
+            ).execute()
 
         for field in stage.get("fields", []):
             field_row = (

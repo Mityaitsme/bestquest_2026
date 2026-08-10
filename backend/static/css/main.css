@@ -373,6 +373,15 @@ button {
   gap: var(--space-4);
 }
 
+.task-chapter {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
 /* ---- Segmented toggle (actual/completed etc.) ---- */
 
 .segmented {

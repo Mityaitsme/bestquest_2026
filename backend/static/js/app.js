@@ -93,6 +93,7 @@
   };
   const taskListEl = document.getElementById("task-list");
   const taskEmptyEl = document.getElementById("task-empty");
+  const taskChapterEl = document.getElementById("task-chapter");
 
   let allTasks = [];
   let taskView = "available";
@@ -1049,6 +1050,8 @@
       }
       if (data.status === "ok") {
         allTasks = data.tasks;
+        taskChapterEl.textContent = data.chapter || "";
+        taskChapterEl.hidden = !data.chapter;
         const signature = tasksSignature(data.tasks);
         if (signature !== lastTasksSignature) {
           lastTasksSignature = signature;
