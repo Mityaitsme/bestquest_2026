@@ -250,6 +250,17 @@ characters:
               reply: "Интересно… что-то еще?"
               # next не указан на узле -> кусок 3 закончен, ch4_talk_to_curator готов
 
+        # --- Глава 6→7: кусок 4, подключается тихо через ch6_find_icann_bunker
+        # (resumes_dialogue_at), ждёт, пока оператор включит "сценарий" ---
+        - key: ch6_curator_intro
+          intro: "Как идет ваше расследование? Нашли бункер?"
+          completes_stage: ch6_talk_to_curator
+          options:
+            - key: found
+              text: "Да, он тут: 55.840; 37.622."
+              reply: "ВДНХ? Неожиданно…\nСлушайте, я хотел попросить вас об одной вещи. Как вы знаете, Курьер отправился следить за главарем секты. Проблема в том, что начиная с какого-то момента он перестал выходить на связь… видимо, там, где прервался сигнал, стоят какие-то глушилки секты…\nНадо его найти. Во-первых, без него я не знаю, как связаться с ICANN, во-вторых нужно понять, что задумал их главарь, ну а в-третьих хороший он человек, нельзя бросать его в беде… Найдите его, пожалуйста!"
+              # next не указан -> кусок 4 закончен, ch6_talk_to_curator готов
+
   - slug: pavel_ksi
     name: "Павел Кси"
     nickname: "pavel_ksi"
@@ -470,6 +481,74 @@ stages:
     title: "Поговорите с Куратором"
     completion_type: dialogue
     requires: [ch4_archive_data]
+
+  - slug: ch5_get_cloak
+    title: "Заберите мантию у Курьера"
+    description: "Пересекитесь с ним здесь: 55.794725, 37.676509"
+    completion_type: actor
+    chapter: "Глава 5. Собрание"
+    requires: [ch4_talk_to_curator]
+
+  - slug: ch5_infiltrate_meeting
+    title: "Проникните на собрание"
+    completion_type: actor
+    requires: [ch5_get_cloak]
+
+  - slug: ch5_discuss_plan
+    title: "Обсудите с Курьером дальнейший план действий"
+    completion_type: actor
+    requires: [ch5_infiltrate_meeting]
+
+  - slug: ch6_return_to_house
+    title: "Отправляйтесь обратно к дому Кристофера"
+    completion_type: actor
+    chapter: "Глава 6. Послание секты"
+    requires: [ch5_discuss_plan]
+
+  - slug: ch6_decode_instructions
+    title: "Расшифруйте тайные инструкции секты"
+    completion_type: answer
+    requires: [ch6_return_to_house]
+    fields:
+      - key: answer
+        label: "Ответ"
+        order: 1
+        order_sensitive: true
+        accepted: ["семь цветов"]
+
+  - slug: ch6_find_seven_colors
+    title: "Найдите семь цветов"
+    completion_type: answer
+    requires: [ch6_decode_instructions]
+    fields:
+      - key: answer
+        label: "Ответ"
+        order: 1
+        order_sensitive: true
+        accepted: ["каменка"]
+
+  - slug: ch6_find_icann_bunker
+    title: "Определите местоположение бункера ICANN"
+    description: "Введите широту и долготу с точностью до трёх знаков после точки"
+    completion_type: answer
+    requires: [ch6_find_seven_colors]
+    resumes_dialogue_at: {curator: ch6_curator_intro}
+    fields:
+      - key: latitude
+        label: "Широта"
+        order: 1
+        order_sensitive: true
+        accepted: ["55.840"]
+      - key: longitude
+        label: "Долгота"
+        order: 2
+        order_sensitive: true
+        accepted: ["37.622"]
+
+  - slug: ch6_talk_to_curator
+    title: "Поговорите с Куратором"
+    completion_type: dialogue
+    requires: [ch6_find_icann_bunker]
 
 # Телефонные номера (phone_numbers):
 #   number         — строка цифр, как её наберёт команда
