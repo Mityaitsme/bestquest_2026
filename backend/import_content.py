@@ -9,9 +9,10 @@
 Идемпотентно: персонажи/этапы/номера обновляются по slug/number, поля — по
 (stage, field_key), фазы звонка — по (номер, content_key), узлы диалога —
 по (персонаж, content_key), варианты — по (узел, content_key). Принятые
-ответы поля, рёбра графа (requires), триггеры/резюме диалога и связи
-success/failure фаз полностью пересоздаются из файла при каждом запуске —
-если у этапа сократили requires, старые предпосылки в базе не остаются.
+ответы поля, сами поля этапа, рёбра графа (requires), триггеры/резюме
+диалога и связи success/failure фаз полностью пересоздаются из файла при
+каждом запуске — если у этапа сократили requires или убрали поле ответа,
+старое в базе не остаётся.
 НИЧЕГО кроме этого не удаляется автоматически: если убрать целиком этап,
 персонажа, номер или узел диалога из YAML, в базе он останется (у команд
 может быть привязанный прогресс/чаты) — в конце скрипт только предупредит
@@ -584,6 +585,18 @@ def import_content(path: Path = DEFAULT_CONTENT_PATH) -> None:
                     for character_slug, node_key in resumes.items()
                 ]
             ).execute()
+
+        # Убираем поля, которых больше нет в YAML для этого этапа (та же
+        # проблема, что была с stage_edges выше) - иначе, например, при
+        # сокращении с 3 полей до 2 старое третье поле останется в базе и
+        # продолжит требовать ответа.
+        current_field_keys = [field["key"] for field in stage.get("fields", [])]
+        existing_field_rows = (
+            client.table("answer_fields").select("id, field_key").eq("stage_id", stage_id).execute().data
+        )
+        for existing_field in existing_field_rows:
+            if existing_field["field_key"] not in current_field_keys:
+                client.table("answer_fields").delete().eq("id", existing_field["id"]).execute()
 
         for field in stage.get("fields", []):
             field_row = (

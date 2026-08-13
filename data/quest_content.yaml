@@ -166,7 +166,7 @@ characters:
           options:
             - key: hello
               text: "Здравствуйте! Мы по поводу Вашего поста в r/LostRubiks"
-              reply: "О, добрый день! Рад, что кто-то откликнулся. У вас тоже украли кубик рубика?"
+              reply: "О, добрый день! Рад, что кто-то откликнулся. У вас тоже украли кубик Рубика?"
               next: ch1_confirm_theft
         - key: ch1_confirm_theft
           options:
@@ -206,7 +206,7 @@ characters:
           options:
             - key: no_luck
               text: "Пока что нет."
-              reply: "Ну ладно. Я искал, что он значит, всеми возможными способами, но ничего не нашел…\nЗнаете, у меня есть план. Мне кажется, содержимое его рюкзака может помочь нам в расследовании. Курьер передаст вам абсолютно идентичный рюкзак, а вы подкараульте, когда он будет выходить из дома, незаметно проследите, чем он занимается, а потом подмените его рюкзак. Посмотрим, что скрывает наш вор кубиков!\nС Курьером встретьтесь здесь: https://yandex.ru/maps/-/CTS1NRKv"
+              reply: "Ну ладно. Я искал, что он значит, всеми возможными способами, но ничего не нашел…\nЗнаете, у меня есть план. Думаю, содержимое его рюкзака может помочь нам в расследовании. Курьер передаст вам абсолютно идентичный рюкзак, а вы подкараульте, когда он будет выходить из дома, незаметно проследите, чем он занимается, а потом подмените его рюкзак. Посмотрим, что скрывает наш вор кубиков!\nС Курьером встретьтесь здесь: 55.758680, 37.647862"
               # next не указан -> кусок 2 закончен, ch2_talk_to_curator готов
 
         # --- Глава 4→5: кусок 3, подключается тихо через ch4_archive_data
@@ -226,7 +226,7 @@ characters:
           # Особый ответ достаётся не "Интернету" конкретно, а тому варианту,
           # который команда выберет ПОСЛЕДНИМ (см. final_reply ниже) — какой
           # именно это будет вариант, заранее не известно.
-          final_reply: "Понятно.\nНадо обязательно воспользоваться возможностью и внедриться на их собрание! Давайте поступим так. Я сделаю вам такую же мантию, как у них, но установлю на нее камеру. Курьер передаст ее, кто-то из вас проберется на собрание - и мы узнаем, к чему им наши кубики рубика, и что они задумали!"
+          final_reply: "Понятно.\nНадо обязательно воспользоваться возможностью и внедриться на их собрание! Давайте поступим так. Я сделаю вам такую же мантию, как у них, но установлю на нее камеру. Курьер передаст ее, кто-то из вас проберется на собрание - и мы узнаем, к чему им наши кубики Рубика, и что они задумали!"
           options:
             - key: meeting
               text: "Собрание"
@@ -257,8 +257,8 @@ characters:
           completes_stage: ch6_talk_to_curator
           options:
             - key: found
-              text: "Да, он тут: 55.840; 37.622."
-              reply: "ВДНХ? Неожиданно…\nСлушайте, я хотел попросить вас об одной вещи. Как вы знаете, Курьер отправился следить за главарем секты. Проблема в том, что начиная с какого-то момента он перестал выходить на связь… видимо, там, где прервался сигнал, стоят какие-то глушилки секты…\nНадо его найти. Во-первых, без него я не знаю, как связаться с ICANN, во-вторых нужно понять, что задумал их главарь, ну а в-третьих хороший он человек, нельзя бросать его в беде… Найдите его, пожалуйста!"
+              text: "Да, он тут: 55.840189, 37.622297."
+              reply: "ВДНХ? Неожиданно…\nСлушайте, я хотел попросить вас об одной вещи. Как вы знаете, Курьер отправился следить за главарем секты. Проблема в том, что начиная с какого-то момента он перестал выходить на связь… видимо, там, где прервался сигнал, стоят какие-то глушилки секты…\nНадо его найти. Во-первых, без него я не знаю, как связаться с ICANN, во-вторых нужно понять, что задумал их главарь, ну а в-третьих хороший он человек, нельзя бросать его в беде… Найдите его, пожалуйста! Связь прервалась здесь: 55.742343, 37.613394."
               # next не указан -> кусок 4 закончен, ch6_talk_to_curator готов
 
         # --- Глава 7→8: кусок 5 (последний), подключается тихо через
@@ -296,7 +296,7 @@ characters:
           entry: true
           options:
             - key: hello
-              text: "Добрый день, Павел! Мы по поводу похищения кубика рубика из Вашего офиса."
+              text: "Добрый день, Павел! Мы по поводу похищения кубика Рубика из Вашего офиса."
               reply: "Здравствуйте! Вы что-то выяснили? Буду рад помочь."
               next: pavel_taxi_lead
         - key: pavel_taxi_lead
@@ -318,7 +318,7 @@ stages:
         label: "Ответ"
         order: 1
         order_sensitive: true
-        accepted_contains: ["кубик", "рубик"]
+        accepted_contains: ["кубик", "Рубик"]
 
   - slug: ch1_investigate_theft
     title: "Разберитесь с похищением"
@@ -351,7 +351,7 @@ stages:
         label: "Ответ"
         order: 1
         order_sensitive: true
-        accepted_contains: ["кси", "такси", "номер", "б235кв"]
+        accepted_contains: ["кси", "такси", "а591ре"]
 
   - slug: ch2_contact_informant
     title: "Свяжитесь с полезным информатором"
@@ -366,7 +366,7 @@ stages:
     requires: [ch2_contact_informant]
 
   - slug: ch2_track_address
-    title: "Узнайте, в каком доме живет незнакомец"
+    title: "Узнайте что-то полезное о незнакомце"
     completion_type: answer
     requires: [ch2_meet_pavel]
     resumes_dialogue_at: {curator: ch2_curator_intro}
@@ -375,24 +375,30 @@ stages:
         label: "Ответ"
         order: 1
         order_sensitive: true
-        accepted_contains: ["покровка, 20/1с1"]
+        accepted_contains: ["покровка", "20/1с1"]
 
   - slug: ch2_talk_to_curator
     title: "Поговорите с Куратором"
     completion_type: dialogue
     requires: [ch2_track_address]
 
+  - slug: ch2_eat
+    title: "Покушайте!"
+    description: "Не забывайте регулярно есть и пить - это очень важно :)"
+    completion_type: checkbox
+    requires: [ch2_talk_to_curator]
+
   - slug: ch3_stakeout
     title: "Отправляйтесь к дому незнакомца"
     description: "Спрячьтесь неподалеку и наблюдайте за подъездом"
     completion_type: manual_review
     chapter: "Глава 3. К.Р."
-    requires: [ch2_talk_to_curator]
+    requires: [ch2_eat]
 
   - slug: ch3_get_backpack
     title: "Получите от Курьера рюкзак"
     completion_type: actor
-    requires: [ch2_talk_to_curator]
+    requires: [ch2_eat]
 
   - slug: ch3_follow_stranger
     title: "Незаметно следите за незнакомцем"
@@ -425,36 +431,31 @@ stages:
       - key: field_1
         label: "Поле 1"
         order: 1
-        order_sensitive: false
-        accepted: ["крупской, 8к1", "89859181998", "ячейка 6"]
+        order_sensitive: true
+        accepted_contains: ["крупской"]
       - key: field_2
         label: "Поле 2"
         order: 2
-        order_sensitive: false
-        accepted: ["крупской, 8к1", "89859181998", "ячейка 6"]
-      - key: field_3
-        label: "Поле 3"
-        order: 3
-        order_sensitive: false
-        accepted: ["крупской, 8к1", "89859181998", "ячейка 6"]
+        order_sensitive: true
+        accepted: ["89859749757"]
 
   - slug: ch3_decode_note_1
     title: "Расшифруйте памятку (1/3)"
     description: "Подпишите настоящие слова рядом и отправьте фотографию первой страницы"
     completion_type: manual_review
-    requires: [ch3_swap_backpacks, ch3_learn_name]
+    requires: [ch3_find_what_christopher_sought]
 
   - slug: ch3_decode_note_2
     title: "Расшифруйте памятку (2/3)"
     description: "Подпишите настоящие слова рядом и отправьте фотографию второй страницы"
     completion_type: manual_review
-    requires: [ch3_swap_backpacks, ch3_learn_name]
+    requires: [ch3_find_what_christopher_sought]
 
   - slug: ch3_decode_note_3
     title: "Расшифруйте памятку (3/3)"
     description: "Подпишите настоящие слова рядом и отправьте фотографию третьей страницы"
     completion_type: manual_review
-    requires: [ch3_swap_backpacks, ch3_learn_name]
+    requires: [ch3_find_what_christopher_sought]
 
   - slug: ch3_repeat_actions
     title: "Повторите действия незнакомца"
@@ -525,11 +526,17 @@ stages:
     completion_type: actor
     requires: [ch5_infiltrate_meeting]
 
+  - slug: ch5_wait_second_day
+    title: "Дождитесь второго дня"
+    description: "Завтра с утра вам снова нужно будет отправиться к дому Кристофера по адресу: ул. Покровка, 20/1с1"
+    completion_type: checkbox
+    requires: [ch5_discuss_plan]
+
   - slug: ch6_return_to_house
     title: "Отправляйтесь обратно к дому Кристофера"
     completion_type: actor
     chapter: "Глава 6. Послание секты"
-    requires: [ch5_discuss_plan]
+    requires: [ch5_wait_second_day]
 
   - slug: ch6_decode_instructions
     title: "Расшифруйте тайные инструкции секты"
@@ -599,17 +606,23 @@ stages:
     completion_type: dialogue
     requires: [ch7_escape_unnoticed]
 
+  - slug: ch8_eat
+    title: "Покушайте!"
+    description: "Не забывайте регулярно есть и пить - это очень важно :)"
+    completion_type: checkbox
+    chapter: "Глава 8. ICANN"
+    requires: [ch7_talk_to_curator]
+
   - slug: ch8_examine_bomb_blueprints
     title: "Исследуйте чертежи бомбы"
     completion_type: checkbox
-    chapter: "Глава 8. ICANN"
     requires: [ch7_talk_to_curator]
 
   - slug: ch8_go_to_library
     title: "Направляйтесь в библиотеку им. Ленина"
     description: "Сфотографируйтесь рядом с ней, когда придёте!"
     completion_type: manual_review
-    requires: [ch8_examine_bomb_blueprints]
+    requires: [ch7_talk_to_curator]
 
   - slug: ch8_get_library_card
     title: "Получите электронный читательский билет"
@@ -630,12 +643,17 @@ stages:
     requires: [ch8_contact_icann]
 
   - slug: ch9_neutralize_cultists_1
-    title: "Обезвредьте сектантов (1/2)"
+    title: "Обезвредьте сектантов (1/3)"
     completion_type: actor
     requires: [ch9_meet_icann_agents]
 
   - slug: ch9_neutralize_cultists_2
-    title: "Обезвредьте сектантов (2/2)"
+    title: "Обезвредьте сектантов (2/3)"
+    completion_type: actor
+    requires: [ch9_meet_icann_agents]
+
+  - slug: ch9_neutralize_cultists_3
+    title: "Обезвредьте сектантов (3/3)"
     completion_type: actor
     requires: [ch9_meet_icann_agents]
 
