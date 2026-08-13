@@ -591,16 +591,37 @@
   }
 
   // ---- Shared chat-browser: list of chats (across all teams) -> thread + mode select ----
-  // Used both by "Техподдержка" (one chat per team, all same persona) and
-  // "Диалоги" (one chat per team, for whichever character is picked) — the
-  // two tabs never show at the same time, but each gets its own instance
-  // (own DOM subtree) since duplicating a few small elements is simpler and
-  // safer here than reparenting one shared subtree between two panels.
+  // Используется и "Техподдержкой" (один чат на команду, один и тот же
+  // персонаж-система), и "Диалогами" (один чат на команду, для выбранного
+  // персонажа) — вкладки никогда не показаны одновременно, но у каждой свой
+  // экземпляр (свои DOM-узлы), так проще и безопаснее, чем перевешивать один
+  // общий поддерево между двумя панелями.
+  //
+  // Пока открыт конкретный чат, раз в CHAT_POLL_INTERVAL_MS тихо проверяем,
+  // не пришло ли новое сообщение (иначе оператору/актёру приходилось выходить
+  // из чата и заходить обратно, чтобы увидеть ответ команды). "Тихо" значит:
+  // не сбрасываем экран в "Загрузка…" и не перерисовываем список сообщений,
+  // если он не изменился — сброс на каждый опрос выглядел бы как то самое
+  // мигание "Загрузка…" вместо чата, на которое отдельно жаловалась тестовая
+  // команда.
+  const CHAT_POLL_INTERVAL_MS = 10000;
+
   function createChatBrowser(refs) {
     let currentChat = null;
+    let pollTimer = null;
+    let lastMessagesSignature = null;
+
+    function stopPolling() {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
 
     function showList() {
       currentChat = null;
+      lastMessagesSignature = null;
+      stopPolling();
       refs.detailView.hidden = true;
       refs.listView.hidden = false;
     }
@@ -645,6 +666,7 @@
 
     function openChat(chat) {
       currentChat = chat;
+      lastMessagesSignature = null;
       readChatLastSeenAt.set(chat.id, chat.last_message_at);
       savePersistedReadState(readChatLastSeenAt);
       refs.titleEl.textContent = chat.team_name;
@@ -654,29 +676,55 @@
       refs.listView.hidden = true;
       refs.detailView.hidden = false;
       loadMessages();
+      stopPolling();
+      pollTimer = setInterval(() => loadMessages({ silent: true }), CHAT_POLL_INTERVAL_MS);
     }
 
-    async function loadMessages() {
+    async function loadMessages({ silent = false } = {}) {
       if (!currentChat) {
         return;
       }
       const chatId = currentChat.id;
-      refs.messagesEl.textContent = "Загрузка…";
+      if (!silent) {
+        refs.messagesEl.textContent = "Загрузка…";
+      }
       try {
         const data = await fetchJsonWithRetry(`/admin/chats/${chatId}/messages`);
         if (!currentChat || currentChat.id !== chatId) {
           return;
         }
         if (data.status !== "ok") {
-          refs.messagesEl.textContent = "Не удалось загрузить сообщения";
+          if (!silent) {
+            refs.messagesEl.textContent = "Не удалось загрузить сообщения";
+          }
           return;
         }
+        // При тихом опросе не трогаем DOM и скролл, если сообщения не
+        // изменились — иначе просто открытый (без новых сообщений) чат
+        // дёргался бы каждые 10 секунд без всякой причины.
+        const signature = data.messages.map((m) => m.id).join(",");
+        if (silent && signature === lastMessagesSignature) {
+          return;
+        }
+        lastMessagesSignature = signature;
         renderMessages(data.messages);
+        // Чат открыт и только что перерисован — считаем его прочитанным по
+        // самое новое сообщение, иначе бейдж "непрочитано" зажжётся для
+        // чата, который оператор прямо сейчас читает (readChatLastSeenAt
+        // иначе обновлялся бы только в момент открытия чата, а не при
+        // каждом тихом обновлении).
+        if (data.messages.length > 0) {
+          const latestAt = data.messages[data.messages.length - 1].created_at;
+          readChatLastSeenAt.set(chatId, latestAt);
+          savePersistedReadState(readChatLastSeenAt);
+        }
       } catch (err) {
         if (!currentChat || currentChat.id !== chatId) {
           return;
         }
-        refs.messagesEl.textContent = "Не удалось загрузить сообщения";
+        if (!silent) {
+          refs.messagesEl.textContent = "Не удалось загрузить сообщения";
+        }
       }
     }
 
@@ -1425,26 +1473,36 @@
   navButtons.teams.addEventListener("click", () => {
     setSection("teams");
     showTeamsListView();
+    // На случай, если в другой вкладке был открыт чат — останавливаем его
+    // фоновый опрос, а не оставляем тикать впустую, пока чат не виден.
+    supportBrowser.showList();
+    dialoguesBrowser.showList();
   });
 
   navButtons.support.addEventListener("click", () => {
     setSection("support");
     loadSupportChats();
+    dialoguesBrowser.showList();
   });
 
   navButtons.dialogues.addEventListener("click", () => {
     setSection("dialogues");
     loadCharactersAndChats();
+    supportBrowser.showList();
   });
 
   navButtons.reviews.addEventListener("click", () => {
     setSection("reviews");
     loadReviews();
+    supportBrowser.showList();
+    dialoguesBrowser.showList();
   });
 
   navButtons.approvals.addEventListener("click", () => {
     setSection("approvals");
     loadBlockPosts();
+    supportBrowser.showList();
+    dialoguesBrowser.showList();
   });
 
   logoutButton.addEventListener("click", async () => {
