@@ -9,8 +9,11 @@
 # При регистрации команды под каждого персонажа создаётся чат (плюс один
 # чат техподдержки), но команда его пока НЕ видит в списке — см. ниже
 # triggers_scripted_dialogue и backend/chat.py: seed_team_chats/discover_chat.
-# Режим чата по умолчанию — 'scripted' у персонажей со сценарным диалогом
-# (см. dialogue ниже), иначе 'operator'; оператор может переключить вручную.
+# Режим чата по умолчанию — 'muted' у персонажей со сценарным диалогом (см.
+# dialogue ниже) — снимается только через resumes_dialogue_at/
+# triggers_scripted_dialogue нужного этапа, обычно самого первого узла
+# персонажа (см. пример ниже) — иначе 'operator'; оператор может
+# переключить режим вручную в любой момент.
 #
 # Этапы (stages):
 #   slug              — уникальный человекочитаемый id этапа (не менять после публикации,
@@ -325,6 +328,7 @@ stages:
     description: "Получите зацепку: где стоит продолжить расследование?"
     completion_type: answer
     requires: [ch1_watch_cameras]
+    resumes_dialogue_at: {curator: ch1_greet}
     fields:
       - key: answer
         label: "Ответ"
@@ -346,6 +350,7 @@ stages:
     title: "Найдите зацепку на фотографиях"
     completion_type: answer
     requires: [ch1_get_photos]
+    resumes_dialogue_at: {pavel_ksi: pavel_greet}
     fields:
       - key: answer
         label: "Ответ"

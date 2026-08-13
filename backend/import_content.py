@@ -336,7 +336,7 @@ def _backfill_existing_teams(
                         "character_id": character_id,
                         "chat_type": "character",
                         "discovered": False,
-                        "mode": "scripted" if start_node_id else "operator",
+                        "mode": "muted" if start_node_id else "operator",
                     }
                     for team_id in missing_team_ids
                 ]

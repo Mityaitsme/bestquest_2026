@@ -27,9 +27,11 @@ def seed_team_chats(team_id: str) -> None:
     mark_stage_completed + trigger_scripted_dialogue ниже). Чат техподдержки
     виден всегда.
 
-    Режим по умолчанию — 'scripted' для персонажей, у которых есть сценарный
-    диалог (иначе команде показывать нечего), иначе 'operator' (свободный
-    текст/молчание — так и было для всех персонажей раньше).
+    Режим по умолчанию — 'muted' для персонажей, у которых есть сценарный
+    диалог (сюжет их ещё не "представил" команде — тихий режим снимается
+    только когда нужный этап делает resumes_dialogue_at/triggers_scripted_
+    dialogue, см. tasks.py: _fire_dialogue_resumes/_fire_dialogue_triggers),
+    иначе 'operator' (свободный текст — для персонажей без диалога).
     """
     client = get_supabase_client()
     characters = client.table("characters").select("id").execute().data
@@ -44,7 +46,7 @@ def seed_team_chats(team_id: str) -> None:
             "character_id": c["id"],
             "chat_type": "character",
             "discovered": False,
-            "mode": "scripted" if c["id"] in characters_with_dialogue else "operator",
+            "mode": "muted" if c["id"] in characters_with_dialogue else "operator",
         }
         for c in characters
     ]
