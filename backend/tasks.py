@@ -58,6 +58,25 @@ def list_team_tasks(team_id: str) -> list[dict]:
     return result.data
 
 
+def list_team_tasks_admin(team_id: str) -> list[dict]:
+    """То же самое, что list_team_tasks, но с available_at — только для
+    админки, чтобы посчитать время выполнения (completed_at - available_at)
+    для вкладки "Выполненные". Команде это поле не нужно, поэтому не отдаём
+    его в обычном list_team_tasks."""
+    client = get_supabase_client()
+    result = (
+        client.table("team_stage_progress")
+        .select(
+            "stage_id, status, available_at, completed_at, completion_method, "
+            "stages(slug, title, description, completion_type)"
+        )
+        .eq("team_id", team_id)
+        .in_("status", VISIBLE_STATUSES)
+        .execute()
+    )
+    return result.data
+
+
 def list_team_graph(team_id: str) -> dict:
     """Полный граф этапов + статус команды по каждому (включая locked) — для
     второстепенного экрана 'граф прогресса' в админке (requirements.md

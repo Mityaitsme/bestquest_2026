@@ -497,6 +497,12 @@ button {
   opacity: 1;
 }
 
+.task-card__duration {
+  margin-top: var(--space-3);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .task-action {
   margin-top: var(--space-4);
   display: flex;

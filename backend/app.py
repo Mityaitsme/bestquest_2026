@@ -52,6 +52,7 @@ from tasks import (
     get_current_chapter,
     list_team_graph,
     list_team_tasks,
+    list_team_tasks_admin,
     list_teams_overview,
     mark_stage_completed,
     seed_team_progress,
@@ -235,7 +236,7 @@ def create_app() -> Flask:
     def admin_get_team_tasks(team_id: str) -> ResponseReturnValue:
         if session.get("identity") != "admin":
             return jsonify(status="error", detail="Требуется вход как админ"), 401
-        return jsonify(status="ok", tasks=list_team_tasks(team_id))
+        return jsonify(status="ok", tasks=list_team_tasks_admin(team_id))
 
     @app.get("/admin/teams/<team_id>/graph")
     def admin_get_team_graph(team_id: str) -> ResponseReturnValue:

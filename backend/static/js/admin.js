@@ -173,6 +173,31 @@
     });
   }
 
+  // Время на задачу = completed_at - available_at (когда этап открылся
+  // команде и когда был отмечен выполненным) - оба поля уже есть в
+  // team_stage_progress, ничего нового считать/писать не нужно.
+  function formatTaskDuration(availableAt, completedAt) {
+    if (!availableAt || !completedAt) {
+      return "неизвестно";
+    }
+    const ms = new Date(completedAt) - new Date(availableAt);
+    if (!Number.isFinite(ms) || ms < 0) {
+      return "неизвестно";
+    }
+    const totalMinutes = Math.round(ms / 60000);
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+
+    if (days > 0) {
+      return `${days}д ${hours}ч`;
+    }
+    if (hours > 0) {
+      return `${hours}ч ${minutes}м`;
+    }
+    return `${minutes}м`;
+  }
+
   // ---- Teams: list + team detail (task list, actor mark-complete, graph) ----
 
   const teamsListView = document.getElementById("admin-teams-list-view");
@@ -343,6 +368,13 @@
 
       if (task.status === "available" && stage.completion_type === "actor") {
         description.appendChild(buildCompleteAction(task));
+      }
+
+      if (task.status === "completed") {
+        const duration = document.createElement("div");
+        duration.className = "task-card__duration";
+        duration.textContent = `Затрачено: ${formatTaskDuration(task.available_at, task.completed_at)}`;
+        description.appendChild(duration);
       }
 
       card.addEventListener("click", () => {
