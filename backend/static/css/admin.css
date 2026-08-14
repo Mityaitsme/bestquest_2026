@@ -319,11 +319,22 @@
 
 /* ---- Admin: persistent notification banners (reviews/dialogue approvals) ----
    В отличие от тоста у команды это НЕ авто-скрывающееся уведомление — висит,
-   пока заявка не будет решена (см. removePendingBanner() в admin.js). */
+   пока заявка не будет решена (см. removePendingBanner() в admin.js).
+
+   Если заявок много (например, несколько команд разом отправили что-то на
+   проверку), баннеры не выстраиваются друг под другом вниз через весь
+   экран (закрывая собой всё остальное) — вместо этого лежат друг на друге
+   ровно в одном месте (position: absolute внутри уже position: fixed
+   контейнера #admin-banner-container), видно только самый верхний по
+   порядку в DOM. Когда он решается и удаляется, под ним сразу же
+   становится виден следующий — как стопка карточек. */
 
 .admin-banner {
+  position: absolute;
+  top: 0;
+  left: 50%;
   max-width: 360px;
-  width: 100%;
+  width: calc(100% - 2 * var(--space-3));
   background: var(--surface-alt);
   border: 1px solid var(--accent);
   border-left: 4px solid var(--accent);
@@ -336,13 +347,13 @@
   cursor: pointer;
   pointer-events: auto;
   opacity: 0;
-  transform: translateY(-12px);
+  transform: translateX(-50%) translateY(-12px);
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
 .admin-banner--visible {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateX(-50%) translateY(0);
 }
 
 /* ---- Admin: unread dot on bottom-nav tabs (Техподдержка/Проверка/Блок-посты) ---- */

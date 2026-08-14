@@ -105,11 +105,18 @@ def submit_field_answer(team_id: str, stage_id: str, field_id: str, value: str) 
         .data
     )
     normalized_submitted = _normalize(value)
-    is_correct = any(
-        _matches(row["value"], row["match_mode"], normalized_submitted) for row in accepted_values
+    matched_value = next(
+        (row for row in accepted_values if _matches(row["value"], row["match_mode"], normalized_submitted)),
+        None,
     )
 
-    if not is_correct:
+    if matched_value is None:
+        return {"correct": False, "stage_completed": False}
+
+    if _matches_another_fields_answer(client, team_id, stage_id, field_id, matched_value):
+        # order-insensitive группа полей: этот же эталонный ответ уже принят
+        # у ДРУГОГО поля этого этапа - нельзя вписать один и тот же ответ в
+        # оба поля и засчитать оба.
         return {"correct": False, "stage_completed": False}
 
     client.table("team_field_submissions").upsert(
@@ -123,6 +130,40 @@ def submit_field_answer(team_id: str, stage_id: str, field_id: str, value: str) 
 
     stage_completed = _maybe_complete_stage(team_id, stage_id)
     return {"correct": True, "stage_completed": stage_completed}
+
+
+def _matches_another_fields_answer(
+    client, team_id: str, stage_id: str, field_id: str, matched_value: dict
+) -> bool:
+    """Для order-insensitive группы полей (общий accepted-список на несколько
+    полей) - проверяет, не отвечено ли уже ДРУГОЕ поле этого этапа тем же
+    самым эталонным ответом (matched_value), что сейчас подошёл текущему
+    полю. Без этой проверки можно было бы вписать один и тот же ответ в оба
+    поля и засчитать сразу оба."""
+    other_field_ids = [
+        row["id"]
+        for row in client.table("answer_fields")
+        .select("id")
+        .eq("stage_id", stage_id)
+        .neq("id", field_id)
+        .execute()
+        .data
+    ]
+    if not other_field_ids:
+        return False
+
+    other_submissions = (
+        client.table("team_field_submissions")
+        .select("submitted_value")
+        .eq("team_id", team_id)
+        .in_("field_id", other_field_ids)
+        .execute()
+        .data
+    )
+    return any(
+        _matches(matched_value["value"], matched_value["match_mode"], _normalize(row["submitted_value"]))
+        for row in other_submissions
+    )
 
 
 def _maybe_complete_stage(team_id: str, stage_id: str) -> bool:
