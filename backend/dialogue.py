@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from supabase_client import get_supabase_client
 from tasks import TaskError, mark_stage_completed
+from telegram_notify import notify_block_post_resolved, notify_if_block_post
 
 CHOSEN_OPTION_SENDER = "team"
 REPLY_SENDER = "character"
@@ -210,6 +211,8 @@ def _advance_to(client, team_id: str, character_id: str, node_id: str | None) ->
         "team_id", team_id
     ).eq("character_id", character_id).execute()
 
+    notify_if_block_post(client, team_id, character_id, node_id)
+
     if node_id is None:
         # Сценарный "кусок" диалога закончился (следующего узла нет) -
         # чат переходит в обычный операторский режим (не muted): команда
@@ -355,6 +358,7 @@ def resolve_block_post(
     client.table("messages").insert(
         {"chat_id": chat_id, "sender_type": REPLY_SENDER, "content": text}
     ).execute()
+    notify_block_post_resolved(team_id, character_id)
 
     _advance_to(client, team_id, character_id, node["next_node_id"])
     if node["next_node_id"] is None:

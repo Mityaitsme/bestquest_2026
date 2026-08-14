@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from supabase_client import get_supabase_client
+from telegram_notify import notify_chat_message, notify_chat_resolved, notify_if_block_post
 
 CHAT_MODES = ("scripted", "operator", "gpt", "muted")
 TEAM_SENDABLE_MODES = ("operator", "gpt")
@@ -175,6 +176,8 @@ def jump_to_node(team_id: str, character_id: str, node_id: str) -> None:
                 {"chat_id": chat_rows[0]["id"], "sender_type": "character", "content": intro}
             ).execute()
 
+    notify_if_block_post(client, team_id, character_id, node_id)
+
 
 def _get_own_chat(client, chat_id: str, team_id: str) -> dict:
     chat = (
@@ -257,7 +260,28 @@ def send_team_message(team_id: str, chat_id: str, content: str) -> dict:
         }
     ).execute()
 
+    if chat["mode"] == "operator":
+        _notify_operator_of_new_message(client, team_id, chat)
+
     return {"mode": chat["mode"], "character_id": chat["character_id"]}
+
+
+def _notify_operator_of_new_message(client, team_id: str, chat: dict) -> None:
+    """Сценарные диалоги (кнопки) и GPT-режим не отвлекают оператора - там
+    либо команда сама ведёт диалог по веткам, либо отвечает автоответчик;
+    уведомление имеет смысл только когда живому оператору правда нужно
+    написать ответ вручную (см. вызывающий код: chat["mode"] == "operator")."""
+    team = client.table("teams").select("name").eq("id", team_id).execute().data
+    team_name = team[0]["name"] if team else "?"
+
+    character_name = None
+    if chat["chat_type"] == "character" and chat["character_id"]:
+        character = (
+            client.table("characters").select("name").eq("id", chat["character_id"]).execute().data
+        )
+        character_name = character[0]["name"] if character else None
+
+    notify_chat_message(chat["id"], team_name, chat["chat_type"], character_name)
 
 
 def list_characters() -> list[dict]:
@@ -366,6 +390,7 @@ def send_admin_message(admin_id: str, chat_id: str, content: str) -> None:
             "message_kind": message_kind,
         }
     ).execute()
+    notify_chat_resolved(chat_id)
 
 
 def set_chat_mode(chat_id: str, mode: str) -> None:

@@ -17,6 +17,8 @@ DEFAULT_SUPABASE_URL = ""
 DEFAULT_SUPABASE_SERVICE_KEY = ""
 DEFAULT_OPENAI_API_KEY = ""
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_TELEGRAM_BOT_TOKEN = ""
+DEFAULT_TELEGRAM_CHAT_ID = ""
 
 
 @dataclass(frozen=True)
@@ -31,6 +33,8 @@ class Config:
     supabase_service_key: str
     openai_api_key: str
     openai_model: str
+    telegram_bot_token: str
+    telegram_chat_id: str
 
 
 def load_config() -> Config:
@@ -46,4 +50,8 @@ def load_config() -> Config:
         ),
         openai_api_key=os.environ.get("OPENAI_API_KEY", DEFAULT_OPENAI_API_KEY),
         openai_model=os.environ.get("OPENAI_MODEL", DEFAULT_OPENAI_MODEL),
+        telegram_bot_token=os.environ.get(
+            "TELEGRAM_BOT_TOKEN", DEFAULT_TELEGRAM_BOT_TOKEN
+        ),
+        telegram_chat_id=os.environ.get("TELEGRAM_CHAT_ID", DEFAULT_TELEGRAM_CHAT_ID),
     )

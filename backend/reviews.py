@@ -11,6 +11,7 @@ from typing import Optional
 
 from supabase_client import get_supabase_client
 from tasks import mark_stage_completed
+from telegram_notify import notify_review_resolved, notify_review_submitted
 
 PHOTO_BUCKET = "manual-review-photos"
 MAX_PHOTO_SIZE_BYTES = 20 * 1024 * 1024  # тот же лимит, что настроен на самом бакете в Supabase
@@ -61,7 +62,7 @@ def submit_manual_review(
     """Создать заявку на ручную проверку. Возвращает id заявки."""
     client = get_supabase_client()
 
-    stage = client.table("stages").select("completion_type").eq("id", stage_id).execute().data
+    stage = client.table("stages").select("completion_type, title").eq("id", stage_id).execute().data
     if not stage:
         raise ReviewError("Такого этапа нет")
     if stage[0]["completion_type"] != "manual_review":
@@ -90,6 +91,12 @@ def submit_manual_review(
         .execute()
         .data[0]
     )
+
+    team = client.table("teams").select("name").eq("id", team_id).execute().data
+    notify_review_submitted(
+        review["id"], team[0]["name"] if team else "?", stage[0]["title"]
+    )
+
     return review["id"]
 
 
@@ -168,6 +175,7 @@ def review_decision(
         comment=comment,
         admin_id=admin_id,
     )
+    notify_review_resolved(review_id)
 
 
 def _notify_team_of_review_decision(
