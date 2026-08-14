@@ -504,8 +504,8 @@ stages:
 
   - slug: ch4_archive_data
     title: "Ознакомьтесь с архивными данными"
-    description: "Изучите все документы, после чего сфотографируйте их и отправьте"
-    completion_type: manual_review
+    description: "Изучите все документы и заберите их с собой"
+    completion_type: checkbox
     requires: [ch4_meeting_time]
     resumes_dialogue_at: {curator: ch4_curator_intro}
 
