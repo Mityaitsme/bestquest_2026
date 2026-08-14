@@ -702,6 +702,7 @@
 
   function openChat(chat, name) {
     currentChat = chat;
+    lastChatMessagesSignature = null;
     stopDialogueWaitPolling();
     unreadChatIds.delete(chat.id);
     updateChatTabDot();
@@ -802,7 +803,7 @@
       const chatIdsWithNewMessages = new Set(data.messages.map((m) => m.chat_id));
 
       if (currentChat && chatIdsWithNewMessages.has(currentChat.id)) {
-        loadMessages();
+        loadMessages({ silent: true });
         chatIdsWithNewMessages.delete(currentChat.id);
       }
 
@@ -961,27 +962,44 @@
     loadChats();
   });
 
-  async function loadMessages() {
+  let lastChatMessagesSignature = null;
+
+  async function loadMessages({ silent = false } = {}) {
     if (!currentChat) {
       return;
     }
     const chatId = currentChat.id;
-    chatMessagesEl.textContent = "Загрузка…";
+    if (!silent) {
+      chatMessagesEl.textContent = "Загрузка…";
+    }
     try {
       const data = await fetchJsonWithRetry(`/chats/${chatId}/messages`);
       if (!currentChat || currentChat.id !== chatId) {
         return;
       }
       if (data.status !== "ok") {
-        chatMessagesEl.textContent = "Не удалось загрузить сообщения";
+        if (!silent) {
+          chatMessagesEl.textContent = "Не удалось загрузить сообщения";
+        }
         return;
       }
+      // При тихом обновлении (после отправки своего сообщения или когда
+      // пришло чужое в фоне) не трогаем экран, если список сообщений не
+      // изменился - иначе именно это и вызывало мигание "Загрузка..." на
+      // каждую отправку/опрос, даже когда реально ничего нового нет.
+      const signature = data.messages.map((m) => m.id).join(",");
+      if (silent && signature === lastChatMessagesSignature) {
+        return;
+      }
+      lastChatMessagesSignature = signature;
       renderMessages(data.messages);
     } catch (err) {
       if (!currentChat || currentChat.id !== chatId) {
         return;
       }
-      chatMessagesEl.textContent = "Не удалось загрузить сообщения";
+      if (!silent) {
+        chatMessagesEl.textContent = "Не удалось загрузить сообщения";
+      }
     }
   }
 
@@ -1018,7 +1036,7 @@
       const data = await response.json();
       if (data.status === "ok") {
         chatInput.value = "";
-        await loadMessages();
+        await loadMessages({ silent: true });
       }
     } catch (err) {
       // сообщение просто не появится - можно попробовать отправить ещё раз
