@@ -13,10 +13,12 @@
 
   function showAuthScreen() {
     authScreen.hidden = false;
+    document.title = "BestQuest — вход";
   }
 
   function hideAuthScreen() {
     authScreen.hidden = true;
+    document.title = "BestQuest";
   }
 
   function setMode(newMode) {
@@ -66,6 +68,7 @@
       const response = await fetch("/auth/me");
       const data = await response.json();
       if (data.identity === "team") {
+        document.title = "BestQuest";
         window.QuestApp.show(data.name);
         return;
       }

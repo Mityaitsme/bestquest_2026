@@ -8,10 +8,12 @@
 
   function showAuthScreen() {
     authScreen.hidden = false;
+    document.title = "BestQuest — вход";
   }
 
   function hideAuthScreen() {
     authScreen.hidden = true;
+    document.title = "BestQuest";
   }
 
   form.addEventListener("submit", async (event) => {
@@ -49,6 +51,7 @@
       const response = await fetch("/auth/me");
       const data = await response.json();
       if (data.identity === "admin") {
+        document.title = "BestQuest";
         window.AdminApp.show(data.username, data.role);
         return;
       }

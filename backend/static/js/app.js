@@ -879,12 +879,14 @@
     }
   }
 
-  async function loadDialogue() {
+  async function loadDialogue({ silent = false } = {}) {
     if (!currentChat) {
       return;
     }
     const chatId = currentChat.id;
-    chatOptionsEl.textContent = "Загрузка…";
+    if (!silent) {
+      chatOptionsEl.textContent = "Загрузка…";
+    }
     try {
       const data = await fetchJsonWithRetry(`/chats/${chatId}/dialogue`);
       if (!currentChat || currentChat.id !== chatId) {
@@ -899,7 +901,9 @@
       if (!currentChat || currentChat.id !== chatId) {
         return;
       }
-      chatOptionsEl.textContent = "Не удалось загрузить варианты ответа";
+      if (!silent) {
+        chatOptionsEl.textContent = "Не удалось загрузить варианты ответа";
+      }
     }
   }
 
@@ -912,7 +916,7 @@
     }
     dialogueWaitPollTimer = setInterval(() => {
       if (currentChat) {
-        loadDialogue();
+        loadDialogue({ silent: true });
       }
     }, DIALOGUE_WAIT_POLL_INTERVAL_MS);
   }
@@ -996,7 +1000,7 @@
         }
         return;
       }
-      await loadMessages();
+      await loadMessages({ silent: true });
       renderDialogueOptions(data.state);
     } catch (err) {
       if (!currentChat || currentChat.id !== chatId) {
