@@ -176,7 +176,7 @@ def jump_to_node(team_id: str, character_id: str, node_id: str) -> None:
                 {"chat_id": chat_rows[0]["id"], "sender_type": "character", "content": intro}
             ).execute()
 
-    notify_if_block_post(client, team_id, character_id, node_id)
+    notify_if_block_post(team_id, character_id, node_id)
 
 
 def _get_own_chat(client, chat_id: str, team_id: str) -> dict:

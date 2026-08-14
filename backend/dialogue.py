@@ -211,7 +211,7 @@ def _advance_to(client, team_id: str, character_id: str, node_id: str | None) ->
         "team_id", team_id
     ).eq("character_id", character_id).execute()
 
-    notify_if_block_post(client, team_id, character_id, node_id)
+    notify_if_block_post(team_id, character_id, node_id)
 
     if node_id is None:
         # Сценарный "кусок" диалога закончился (следующего узла нет) -
