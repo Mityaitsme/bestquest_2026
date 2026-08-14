@@ -825,7 +825,7 @@
         const data = await response.json();
         if (data.status === "ok") {
           refs.inputEl.value = "";
-          await loadMessages();
+          await loadMessages({ silent: true });
         }
       } catch (err) {
         // сообщение просто не появится - можно попробовать отправить ещё раз
