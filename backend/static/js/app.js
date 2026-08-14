@@ -706,6 +706,7 @@
     stopDialogueWaitPolling();
     unreadChatIds.delete(chat.id);
     updateChatTabDot();
+    dismissPersistentToast(chat.id);
     chatDetailTitle.textContent = name;
     chatListViewEl.hidden = true;
     chatDetailViewEl.hidden = false;
@@ -747,6 +748,41 @@
       toast.classList.remove("toast--visible");
       setTimeout(() => toast.remove(), 300);
     }, TOAST_VISIBLE_MS);
+  }
+
+  // Тост, который НЕ исчезает сам - для случая, когда сценарный диалог
+  // "ожил" сам и сразу заговорил персонаж (message_kind === "dialogue_intro"
+  // в /chats/new-messages), а не обычное сообщение. Пропадает только когда
+  // команда реально открыла этот чат (см. openChat) - по клику на сам тост
+  // или зайдя в чат любым другим способом (например, через список чатов).
+  const persistentToastByChatId = new Map();
+
+  function showPersistentToast(chatId, text, onClick) {
+    if (persistentToastByChatId.has(chatId)) {
+      return;
+    }
+    const toast = document.createElement("div");
+    toast.className = "toast";
+    toast.textContent = text;
+    toast.addEventListener("click", () => {
+      dismissPersistentToast(chatId);
+      if (onClick) {
+        onClick();
+      }
+    });
+    toastContainerEl.appendChild(toast);
+    setTimeout(() => toast.classList.add("toast--visible"), 20);
+    persistentToastByChatId.set(chatId, toast);
+  }
+
+  function dismissPersistentToast(chatId) {
+    const toast = persistentToastByChatId.get(chatId);
+    if (!toast) {
+      return;
+    }
+    persistentToastByChatId.delete(chatId);
+    toast.classList.remove("toast--visible");
+    setTimeout(() => toast.remove(), 300);
   }
 
   const MESSAGE_POLL_INTERVAL_MS = 10000;
@@ -801,6 +837,9 @@
       lastMessagePollAt = data.messages[data.messages.length - 1].created_at;
 
       const chatIdsWithNewMessages = new Set(data.messages.map((m) => m.chat_id));
+      const chatIdsWithDialogueIntro = new Set(
+        data.messages.filter((m) => m.message_kind === "dialogue_intro").map((m) => m.chat_id)
+      );
 
       if (currentChat && chatIdsWithNewMessages.has(currentChat.id)) {
         loadMessages({ silent: true });
@@ -812,7 +851,7 @@
         updateChatTabDot();
         const chat = allChats.find((c) => c.id === chatId);
         const name = chat ? getChatDisplayName(chat) : "Чат";
-        showToast(`Новое сообщение: ${name}`, () => {
+        const openThisChat = () => {
           setTab("chat");
           chatListViewEl.hidden = true;
           chatDetailViewEl.hidden = false;
@@ -821,7 +860,12 @@
           } else {
             loadChats();
           }
-        });
+        };
+        if (chatIdsWithDialogueIntro.has(chatId)) {
+          showPersistentToast(chatId, `Новое сообщение: ${name}`, openThisChat);
+        } else {
+          showToast(`Новое сообщение: ${name}`, openThisChat);
+        }
       }
 
       // Если список чатов сейчас на экране — сразу перерисовать, чтобы
@@ -896,12 +940,22 @@
     }
     stopDialogueWaitPolling();
 
-    if (state.finished || !state.options || state.options.length === 0) {
-      // Диалог кончился - backend уже перевёл чат в muted (см. dialogue.py:
-      // _advance_to), так что при следующем открытии чата команда попадёт в
-      // обычную ветку "нельзя писать" через chatReadonlyNote. Этот текст -
-      // только на случай, если диалог закончился прямо в открытом чате, ещё
-      // до следующего openChat().
+    if (state.finished) {
+      // Диалог кончился - backend уже перевёл чат в operator (см.
+      // dialogue.py: _advance_to), команда может писать сразу, без выхода и
+      // повторного захода в чат. currentChat.mode держим в синхроне с этим,
+      // чтобы дальнейшая логика (например, следующий openChat()) видела
+      // актуальный режим, а не устаревший "scripted" из момента открытия.
+      if (currentChat) {
+        currentChat.mode = "operator";
+      }
+      chatOptionsEl.hidden = true;
+      chatReadonlyNote.hidden = true;
+      chatInputRow.hidden = false;
+      return;
+    }
+
+    if (!state.options || state.options.length === 0) {
       const empty = document.createElement("p");
       empty.className = "chat-options__note";
       empty.textContent = "Сейчас в этом чате нельзя писать.";

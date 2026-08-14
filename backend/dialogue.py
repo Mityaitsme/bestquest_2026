@@ -237,8 +237,16 @@ def _deliver_node_intro(client, team_id: str, character_id: str, node_id: str) -
     if not intro:
         return
     chat_id, _ = _get_character_chat(client, team_id, character_id)
+    # message_kind="dialogue_intro" - см. тот же комментарий в chat.py:
+    # jump_to_node - персонаж заговорил первым, без реплики команды перед
+    # этим, фронтенд команды показывает не самоисчезающий тост.
     client.table("messages").insert(
-        {"chat_id": chat_id, "sender_type": REPLY_SENDER, "content": intro}
+        {
+            "chat_id": chat_id,
+            "sender_type": REPLY_SENDER,
+            "content": intro,
+            "message_kind": "dialogue_intro",
+        }
     ).execute()
 
 

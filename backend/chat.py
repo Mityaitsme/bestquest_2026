@@ -156,9 +156,13 @@ def jump_to_node(team_id: str, character_id: str, node_id: str) -> None:
     client.table("team_dialogue_state").update({"current_node_id": node_id}).eq(
         "team_id", team_id
     ).eq("character_id", character_id).execute()
-    client.table("chats").update({"mode": "scripted"}).eq("team_id", team_id).eq(
-        "character_id", character_id
-    ).execute()
+    # discovered: True обязательно - иначе команда, ещё не искавшая ник этого
+    # персонажа вручную, никогда не увидит этот чат в списке, хотя режим уже
+    # переключился на scripted (тот же самый шаг уже делает
+    # trigger_scripted_dialogue для симметрии).
+    client.table("chats").update({"mode": "scripted", "discovered": True}).eq(
+        "team_id", team_id
+    ).eq("character_id", character_id).execute()
 
     node = client.table("dialogue_nodes").select("intro_message").eq("id", node_id).execute().data
     intro = node[0]["intro_message"] if node else ""
@@ -172,8 +176,17 @@ def jump_to_node(team_id: str, character_id: str, node_id: str) -> None:
             .data
         )
         if chat_rows:
+            # message_kind="dialogue_intro" - персонаж заговорил сам, без
+            # предшествующей реплики команды; фронтенд команды показывает для
+            # таких сообщений не самоисчезающий тост, а уведомление, которое
+            # остаётся, пока команда не откроет этот чат (см. app.js).
             client.table("messages").insert(
-                {"chat_id": chat_rows[0]["id"], "sender_type": "character", "content": intro}
+                {
+                    "chat_id": chat_rows[0]["id"],
+                    "sender_type": "character",
+                    "content": intro,
+                    "message_kind": "dialogue_intro",
+                }
             ).execute()
 
     notify_if_block_post(team_id, character_id, node_id)
@@ -219,10 +232,12 @@ def list_messages(team_id: str, chat_id: str) -> list[dict]:
 def list_new_messages_since(team_id: str, since: str) -> list[dict]:
     """Для лёгкого polling-опроса на фронтенде команды (уведомления о новых
     сообщениях): не от самой команды, во всех её чатах, появившиеся после
-    `since` (ISO-время последнего опроса). Отдаём только chat_id/sender_type/
-    created_at — этого достаточно, чтобы фронтенд понял, в каком чате
-    появилось новое и стоит ли тихонько обновить открытый сейчас чат или
-    показать тост; сам текст сообщения довеpяем обычной загрузке чата."""
+    `since` (ISO-время последнего опроса). Отдаём chat_id/sender_type/
+    message_kind/created_at — этого достаточно, чтобы фронтенд понял, в каком
+    чате появилось новое, стоит ли тихонько обновить открытый сейчас чат, и
+    нужен ли обычный самоисчезающий тост или не исчезающее уведомление
+    (message_kind == "dialogue_intro" — персонаж заговорил сам); сам текст
+    сообщения доверяем обычной загрузке чата."""
     client = get_supabase_client()
     chat_ids = [
         row["id"] for row in client.table("chats").select("id").eq("team_id", team_id).execute().data
@@ -232,7 +247,7 @@ def list_new_messages_since(team_id: str, since: str) -> list[dict]:
 
     return (
         client.table("messages")
-        .select("chat_id, sender_type, created_at")
+        .select("chat_id, sender_type, message_kind, created_at")
         .in_("chat_id", chat_ids)
         .neq("sender_type", "team")
         .gt("created_at", since)
