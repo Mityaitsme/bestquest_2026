@@ -148,19 +148,18 @@ def trigger_scripted_dialogue(team_id: str, character_id: str) -> None:
 def jump_to_node(team_id: str, character_id: str, node_id: str) -> None:
     """Этап толкает диалог персонажа на конкретный узел (следующий "кусок"
     истории) — см. stage_dialogue_resumes и tasks.py: _fire_dialogue_resumes.
-    Как и trigger_scripted_dialogue, сразу включает режим 'сценарий' —
-    команда увидит новый кусок сама, без ручного переключения оператором.
-    Между кусками чат стоит в 'operator' (см. dialogue.py: _advance_to),
-    так что это ровно момент, когда сюжет снова "оживает"."""
+    Сразу включает режим 'сценарий' — команде не нужно ждать, пока оператор
+    вручную переключит режим. НЕ трогает discovered (в отличие от
+    trigger_scripted_dialogue) — команда должна найти чат с этим персонажем
+    сама, через поиск ника (#mark1979/#pavel_ksi и т.п.); режим при этом уже
+    будет правильным, когда она его найдёт. Между кусками чат стоит в
+    'operator' (см. dialogue.py: _advance_to), так что это ровно момент,
+    когда сюжет снова "оживает" — просто пока не обязательно на виду."""
     client = get_supabase_client()
     client.table("team_dialogue_state").update({"current_node_id": node_id}).eq(
         "team_id", team_id
     ).eq("character_id", character_id).execute()
-    # discovered: True обязательно - иначе команда, ещё не искавшая ник этого
-    # персонажа вручную, никогда не увидит этот чат в списке, хотя режим уже
-    # переключился на scripted (тот же самый шаг уже делает
-    # trigger_scripted_dialogue для симметрии).
-    client.table("chats").update({"mode": "scripted", "discovered": True}).eq(
+    client.table("chats").update({"mode": "scripted"}).eq(
         "team_id", team_id
     ).eq("character_id", character_id).execute()
 

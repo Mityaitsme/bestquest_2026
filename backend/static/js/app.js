@@ -155,7 +155,24 @@
     tabChatDot.hidden = unreadChatIds.size === 0;
   }
 
+  function closeChatDetail() {
+    currentChat = null;
+    stopDialogueWaitPolling();
+    chatDetailViewEl.hidden = true;
+    chatListViewEl.hidden = false;
+  }
+
   function setTab(tab) {
+    if (tab !== "chat" && currentChat) {
+      // Уходим с вкладки "Чат" на другую (Задачи/Звонки), не нажав явно
+      // "Назад" внутри чата - currentChat раньше оставался "залипшим" на
+      // этом чате, и опрос новых сообщений считал, что команда всё ещё его
+      // смотрит: тихо обновлял чат вместо тоста/точки, если именно в нём
+      // приходило новое сообщение (например, реплика персонажа, которой
+      // начинается сценарный диалог). Явно закрываем чат при уходе с
+      // вкладки, чтобы уведомления не терялись.
+      closeChatDetail();
+    }
     for (const key of Object.keys(panels)) {
       panels[key].hidden = key !== tab;
       navButtons[key].setAttribute("aria-selected", String(key === tab));
@@ -1013,10 +1030,7 @@
   }
 
   chatBackButton.addEventListener("click", () => {
-    currentChat = null;
-    stopDialogueWaitPolling();
-    chatDetailViewEl.hidden = true;
-    chatListViewEl.hidden = false;
+    closeChatDetail();
     loadChats();
   });
 
